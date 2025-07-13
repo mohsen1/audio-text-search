@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Upload, Play, CheckCircle, XCircle, FileText, Eye, Mic } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, FileText, Eye, Mic } from 'lucide-react';
 import Header from '@/components/header';
 
 interface UploadedFile {
@@ -107,8 +107,65 @@ export default function UploadPage() {
     }
   };
 
-  const uploadFile = async (fileIndex: number) => {
-    console.log('🚀 Starting upload for fileIndex:', fileIndex);
+  const uploadFileServerSide = async (fileIndex: number) => {
+    console.log('🔄 Falling back to server-side upload for fileIndex:', fileIndex);
+    const fileToUpload = files[fileIndex];
+    if (!fileToUpload) {
+      console.error('❌ No file found at index:', fileIndex);
+      return;
+    }
+
+    setFiles(prev => prev.map((f, i) => 
+      i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
+    ));
+
+    // Progress simulation for server-side upload
+    const progressInterval = setInterval(() => {
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex && f.status === 'uploading' 
+          ? { ...f, progress: Math.min(f.progress + 10, 90) } 
+          : f
+      ));
+    }, 200);
+
+    try {
+      const formData = new FormData();
+      formData.append('audio', fileToUpload.file);
+
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const result = await response.json();
+      clearInterval(progressInterval);
+
+      if (response.ok) {
+        setFiles(prev => prev.map((f, i) => 
+          i === fileIndex ? { 
+            ...f, 
+            status: 'processing', 
+            progress: 70,
+            id: result.fileId 
+          } : f
+        ));
+      } else {
+        throw new Error(result.error || 'Server-side upload failed');
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { 
+          ...f, 
+          status: 'failed', 
+          error: error instanceof Error ? error.message : 'Server-side upload failed'
+        } : f
+      ));
+    }
+  };
+
+  const uploadFileClientSide = async (fileIndex: number) => {
+    console.log('🚀 Starting client-side transcription for fileIndex:', fileIndex);
     const fileToUpload = files[fileIndex];
     if (!fileToUpload) {
       console.error('❌ No file found at index:', fileIndex);
@@ -127,65 +184,149 @@ export default function UploadPage() {
       i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
     ));
 
-    // Simulate upload progress
-    const progressInterval = setInterval(() => {
-      setFiles(prev => prev.map((f, i) => 
-        i === fileIndex && f.status === 'uploading' 
-          ? { ...f, progress: Math.min(f.progress + 10, 90) } 
-          : f
-      ));
-    }, 200);
-
     try {
-      console.log('📦 Creating FormData...');
-      const formData = new FormData();
-      formData.append('audio', fileToUpload.file);
-      
-      console.log('📦 FormData created:', {
-        hasAudio: formData.has('audio'),
-        audioValue: formData.get('audio'),
-        audioFile: formData.get('audio') instanceof File,
-        audioFileSize: (formData.get('audio') as File)?.size
-      });
+      // Step 1: Get ElevenLabs API key
+      console.log('🔑 Fetching ElevenLabs API key...');
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 10 } : f
+      ));
 
-      console.log('🌐 Sending fetch request...');
-      const response = await fetch('/api/upload', {
+      const apiKeyResponse = await fetch('/api/user/elevenlabs-key?forUpload=true');
+      if (!apiKeyResponse.ok) {
+        throw new Error('Failed to get API key');
+      }
+      
+      const { apiKey } = await apiKeyResponse.json();
+      if (!apiKey) {
+        throw new Error('ElevenLabs API key not configured. Please add your API key in settings.');
+      }
+
+      // Step 2: Send file directly to ElevenLabs
+      console.log('🎵 Sending file to ElevenLabs for transcription...');
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 30 } : f
+      ));
+
+      const formData = new FormData();
+      formData.append('model_id', 'scribe_v1');
+      formData.append('file', fileToUpload.file);
+      formData.append('timestamps_granularity', 'word');
+      formData.append('output_format', 'verbose_json');
+
+      const transcriptionResponse = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
         method: 'POST',
+        headers: { 'xi-api-key': apiKey },
         body: formData,
       });
 
-      console.log('📤 Response received:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
+      if (!transcriptionResponse.ok) {
+        const errorText = await transcriptionResponse.text();
+        throw new Error(`ElevenLabs API error: ${transcriptionResponse.status} - ${errorText}`);
+      }
+
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 70 } : f
+      ));
+
+      const transcriptionResult = await transcriptionResponse.json();
+      console.log('📝 Transcription received from ElevenLabs');
+
+      // Step 3: Send transcription results to our backend
+      console.log('💾 Storing transcription results...');
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, status: 'processing', progress: 80 } : f
+      ));
+
+      const storeResponse = await fetch('/api/upload/result', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          fileName: fileToUpload.file.name,
+          fileSize: fileToUpload.file.size,
+          mimeType: fileToUpload.file.type,
+          transcriptionResult,
+        }),
       });
 
-      const result = await response.json();
-      console.log('📄 Response data:', result);
-
-      clearInterval(progressInterval);
-
-      if (response.ok) {
-        setFiles(prev => prev.map((f, i) => 
-          i === fileIndex ? { 
-            ...f, 
-            status: 'processing', 
-            progress: 70, // Upload complete, now processing
-            id: result.fileId 
-          } : f
-        ));
-      } else {
-        throw new Error(result.error || 'Upload failed');
+      if (!storeResponse.ok) {
+        const errorData = await storeResponse.json();
+        throw new Error(errorData.error || 'Failed to store transcription');
       }
+
+      const result = await storeResponse.json();
+      console.log('✅ Transcription stored successfully');
+
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { 
+          ...f, 
+          status: 'completed', 
+          progress: 100,
+          id: result.fileId 
+        } : f
+      ));
+
     } catch (error) {
-      clearInterval(progressInterval);
+      console.error('❌ Transcription failed:', error);
       setFiles(prev => prev.map((f, i) => 
         i === fileIndex ? { 
           ...f, 
           status: 'failed', 
-          error: error instanceof Error ? error.message : 'Upload failed'
+          error: error instanceof Error ? error.message : 'Transcription failed'
         } : f
       ));
+    }
+  };
+
+  const uploadFile = async (fileIndex: number) => {
+    const fileToUpload = files[fileIndex];
+    if (!fileToUpload) {
+      return;
+    }
+
+    // For files over 4MB, use client-side processing to avoid Vercel limits
+    // For smaller files, try client-side first, then fallback to server-side if needed
+    const useClientSide = fileToUpload.file.size > 4 * 1024 * 1024; // 4MB threshold
+
+    console.log(`🚀 Starting ${useClientSide ? 'client-side' : 'client-side (with server fallback)'} transcription for fileIndex:`, fileIndex);
+    console.log('📁 File to upload:', {
+      name: fileToUpload.file.name,
+      size: fileToUpload.file.size,
+      type: fileToUpload.file.type,
+    });
+
+    try {
+      // Always try client-side first
+      await uploadFileClientSide(fileIndex);
+    } catch (error) {
+      console.warn('❌ Client-side transcription failed:', error);
+      
+      // Only fallback to server-side for smaller files
+      if (!useClientSide) {
+        console.log('🔄 Attempting server-side fallback...');
+        try {
+          await uploadFileServerSide(fileIndex);
+        } catch (serverError) {
+          console.error('❌ Server-side fallback also failed:', serverError);
+          setFiles(prev => prev.map((f, i) => 
+            i === fileIndex ? { 
+              ...f, 
+              status: 'failed', 
+              error: `Both client-side and server-side processing failed. ${error instanceof Error ? error.message : 'Unknown error'}`
+            } : f
+          ));
+        }
+      } else {
+        // For large files, don't attempt server-side (would fail due to size limits)
+        setFiles(prev => prev.map((f, i) => 
+          i === fileIndex ? { 
+            ...f, 
+            status: 'failed', 
+            error: error instanceof Error ? error.message : 'Client-side transcription failed'
+          } : f
+        ));
+      }
     }
   };
 
@@ -217,8 +358,11 @@ export default function UploadPage() {
   const getStatusText = (status: UploadedFile['status'], progress: number) => {
     switch (status) {
       case 'pending': return 'Ready to transcribe';
-      case 'uploading': return 'Uploading...';
-      case 'processing': return 'Processing with ElevenLabs Scribe...';
+      case 'uploading': 
+        if (progress < 20) return 'Getting API key...';
+        if (progress < 70) return 'Transcribing with ElevenLabs...';
+        return 'Storing results...';
+      case 'processing': return 'Finalizing transcription...';
       case 'completed': return 'Transcription completed ✅';
       case 'failed': return 'Failed ❌';
       default: return 'Unknown';
@@ -251,7 +395,7 @@ export default function UploadPage() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-8">
           <p className="text-gray-600 dark:text-gray-300">
-            Transcribe your audio files using ElevenLabs Scribe
+            Transcribe your audio files using ElevenLabs Scribe. Files are processed directly in your browser for faster uploads and support for large files.
           </p>
         </div>
 
