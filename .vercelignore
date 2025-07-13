@@ -1,0 +1,23 @@
+# Development files
+.env.local
+.env.development
+.env.test
+
+# Database files
+prisma/dev.db
+prisma/dev.db-journal
+
+# Test files
+**/*.test.*
+**/*.spec.*
+test/
+tests/
+__tests__/
+
+# IDE files
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db

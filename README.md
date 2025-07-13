@@ -54,8 +54,57 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
+## Database Setup
+
+This project uses Prisma with PostgreSQL. For development, you can use a local PostgreSQL instance, and for production, we recommend using [Neon](https://neon.tech).
+
+### Development Setup
+
+1. Copy the environment file:
+```bash
+cp .env.example .env.local
+```
+
+2. Set up your database URL in `.env.local`:
+```env
+DATABASE_URL="postgresql://username:password@localhost:5432/audio_text_search"
+```
+
+3. Run migrations:
+```bash
+pnpm run db:migrate
+```
+
+### Production Setup with Neon
+
+1. Create a new project at [Neon](https://neon.tech)
+2. Copy the connection string from your Neon dashboard
+3. Add it to your Vercel environment variables as `DATABASE_URL`
+
 ## Deploy on Vercel
 
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+### Deployment Steps
+
+1. **Connect your repository** to Vercel
+2. **Set environment variables** in your Vercel project settings:
+   - `DATABASE_URL` - Your Neon PostgreSQL connection string
+   - `NEXTAUTH_URL` - Your production URL (e.g., `https://your-app.vercel.app`)
+   - `NEXTAUTH_SECRET` - A random secret for NextAuth.js
+3. **Deploy** - Vercel will automatically run migrations during build
+
+### Environment Variables Required
+
+```env
+DATABASE_URL="postgresql://..."
+NEXTAUTH_URL="https://your-app.vercel.app"
+NEXTAUTH_SECRET="your-secret-here"
+```
+
+The build process will automatically:
+- Generate the Prisma client
+- Run database migrations
+- Build the Next.js application
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
