@@ -266,27 +266,6 @@ export default function ProfilePage() {
                 </div>
               )}
             </div>
-
-            {/* Future API Keys Section */}
-            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-6 opacity-50">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white flex items-center">
-                    <span className="mr-2">🔮</span>
-                    Additional Integrations
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Support for more AI services coming soon
-                  </p>
-                </div>
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                  Coming Soon
-                </span>
-              </div>
-              <div className="text-sm text-gray-500">
-                Future integrations may include OpenAI Whisper, Azure Speech Services, and more.
-              </div>
-            </div>
           </div>
         </div>
 

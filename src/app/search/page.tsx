@@ -193,12 +193,40 @@ export default function SearchPage() {
 
                     <div className="space-y-4">
                       {result.matches.map((match, index) => (
-                        <div key={index} className="border-l-4 border-blue-200 pl-4 py-2">
-                          <div className="flex items-center gap-4 mb-2">
+                        <div key={index} className="border-l-4 border-blue-200 pl-4 py-3 bg-gray-50 dark:bg-gray-700/50 rounded-r-lg">
+                          {/* Clear statement about the match */}
+                          <div className="mb-3">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              Found "{highlightMatch(match.text, searchResults.query)}" in file <span className="text-blue-600 font-semibold">{result.originalName}</span>
+                              {match.startTime > 0 && (
+                                <span className="text-gray-600 dark:text-gray-300">
+                                  {' '}at time {formatTime(match.startTime)}
+                                  {match.endTime !== match.startTime && ` - ${formatTime(match.endTime)}`}
+                                </span>
+                              )}
+                            </p>
+                          </div>
+
+                          {/* Context and controls */}
+                          <div className="space-y-2">
+                            <div className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 p-3 rounded">
+                              <span className="text-gray-400">...</span>
+                              {match.contextBefore && (
+                                <span className="mr-1">{match.contextBefore}</span>
+                              )}
+                              <span className="font-semibold bg-yellow-100 dark:bg-yellow-900 px-1 rounded">
+                                {match.text}
+                              </span>
+                              {match.contextAfter && (
+                                <span className="ml-1">{match.contextAfter}</span>
+                              )}
+                              <span className="text-gray-400">...</span>
+                            </div>
+                            
                             {match.startTime > 0 && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
-                                  {formatTime(match.startTime)}
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-mono bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                  🕒 {formatTime(match.startTime)}
                                   {match.endTime !== match.startTime && ` - ${formatTime(match.endTime)}`}
                                 </span>
                                 <button
@@ -206,26 +234,12 @@ export default function SearchPage() {
                                     // TODO: Implement audio player with jump-to-time
                                     console.log(`Jump to ${formatTime(match.startTime)} in ${result.originalName}`);
                                   }}
-                                  className="text-xs text-blue-600 hover:text-blue-800 underline"
+                                  className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
                                 >
-                                  🎵 Jump to audio
+                                  🎵 Play from this time
                                 </button>
                               </div>
                             )}
-                          </div>
-                          
-                          <div className="text-sm text-gray-700 dark:text-gray-300">
-                            <span className="text-gray-500">...</span>
-                            {match.contextBefore && (
-                              <span className="mr-1">{match.contextBefore}</span>
-                            )}
-                            <span className="font-medium">
-                              {highlightMatch(match.text, searchResults.query)}
-                            </span>
-                            {match.contextAfter && (
-                              <span className="ml-1">{match.contextAfter}</span>
-                            )}
-                            <span className="text-gray-500">...</span>
                           </div>
                         </div>
                       ))}

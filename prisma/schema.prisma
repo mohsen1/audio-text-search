@@ -74,6 +74,21 @@ model AudioFile {
   userId        String
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  words         TranscriptWord[]
+}
+
+model TranscriptWord {
+  id          String    @id @default(cuid())
+  audioFileId String
+  word        String
+  startTime   Float     // Start time in seconds
+  endTime     Float     // End time in seconds
+  wordIndex   Int       // Position in the transcript
+  
+  audioFile   AudioFile @relation(fields: [audioFileId], references: [id], onDelete: Cascade)
+  
+  @@index([audioFileId, wordIndex])
+  @@index([audioFileId, word])
 }
 
 model VerificationToken {

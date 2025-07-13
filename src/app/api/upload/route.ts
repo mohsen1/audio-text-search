@@ -113,17 +113,42 @@ async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFil
       ? transcriptionResult 
       : transcriptionResult.text || JSON.stringify(transcriptionResult);
     
-    await prisma.audioFile.update({
-      where: { id: fileId },
-      data: {
-        transcription: plainText,
-        transcriptData: JSON.stringify(transcriptionResult), // Store full response for timestamp search
-        status: 'completed',
-        processedAt: new Date(),
-      },
+    // Extract and store word-level timestamps
+    const words = extractWordsFromElevenLabsResponse(transcriptionResult);
+    
+    // Update audio file and store words in a transaction
+    await prisma.$transaction(async (tx) => {
+      // Update the audio file
+      await tx.audioFile.update({
+        where: { id: fileId },
+        data: {
+          transcription: plainText,
+          transcriptData: JSON.stringify(transcriptionResult), // Store full response for timestamp search
+          status: 'completed',
+          processedAt: new Date(),
+        },
+      });
+      
+      // Delete any existing words for this file (in case of reprocessing)
+      await tx.transcriptWord.deleteMany({
+        where: { audioFileId: fileId },
+      });
+      
+      // Insert new words if any were found
+      if (words.length > 0) {
+        await tx.transcriptWord.createMany({
+          data: words.map((word, index) => ({
+            audioFileId: fileId,
+            word: word.word,
+            startTime: word.start,
+            endTime: word.end,
+            wordIndex: index,
+          })),
+        });
+      }
     });
     
-    console.log(`✅ Successfully transcribed ${originalFileName} (${plainText?.length} chars)`);
+    console.log(`✅ Successfully transcribed ${originalFileName} (${plainText?.length} chars, ${words.length} words with timestamps)`);
 
   } catch (error) {
     console.error(`❌ Failed to process ${originalFileName}:`, error.message);
@@ -133,5 +158,53 @@ async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFil
       data: { status: 'failed' },
     });
     throw error;
+  }
+}
+
+interface ElevenLabsWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+function extractWordsFromElevenLabsResponse(transcriptionResult: any): ElevenLabsWord[] {
+  try {
+    // Handle different ElevenLabs response formats
+    let words: ElevenLabsWord[] = [];
+    
+    if (transcriptionResult.words && Array.isArray(transcriptionResult.words)) {
+      // Direct words array
+      words = transcriptionResult.words;
+    } else if (transcriptionResult.segments && Array.isArray(transcriptionResult.segments)) {
+      // Segments containing words
+      words = transcriptionResult.segments.flatMap((segment: any) => 
+        segment.words || []
+      );
+    } else if (Array.isArray(transcriptionResult)) {
+      // Array of words directly
+      words = transcriptionResult;
+    } else if (transcriptionResult.text && typeof transcriptionResult.text === 'string') {
+      // Fallback: split text into words without timestamps
+      const textWords = transcriptionResult.text.split(/\s+/);
+      words = textWords.map((word: string, index: number) => ({
+        word: word,
+        start: 0,
+        end: 0
+      }));
+    }
+    
+    // Filter and clean words
+    return words
+      .filter(word => word && word.word && typeof word.word === 'string')
+      .map(word => ({
+        word: word.word.trim(),
+        start: typeof word.start === 'number' ? word.start : 0,
+        end: typeof word.end === 'number' ? word.end : 0
+      }))
+      .filter(word => word.word.length > 0);
+      
+  } catch (error) {
+    console.error('Error extracting words from ElevenLabs response:', error);
+    return [];
   }
 }
