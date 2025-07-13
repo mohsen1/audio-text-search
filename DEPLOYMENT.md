@@ -1,5 +1,11 @@
 # Vercel Deployment Checklist
 
+## Important: Database Provider Change
+
+⚠️ **This project was recently switched from SQLite to PostgreSQL**
+
+The migration history has been reset to accommodate the database provider change. The old SQLite migrations have been removed, and a new PostgreSQL migration will be created on first deployment.
+
 ## Prerequisites
 
 - [ ] Neon PostgreSQL database created

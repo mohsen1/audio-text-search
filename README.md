@@ -2,10 +2,47 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+### 1. Install Dependencies
 
 ```bash
 pnpm install
+```
+
+### 2. Database Setup
+
+This project uses PostgreSQL with Prisma. You have two options:
+
+#### Option A: Local PostgreSQL
+1. Install PostgreSQL locally
+2. Create a database: `createdb audio_text_search_dev`
+3. Update `.env` with your local connection string:
+   ```env
+   DATABASE_URL="postgresql://username:password@localhost:5432/audio_text_search_dev"
+   ```
+
+#### Option B: Neon (Recommended)
+1. Create a free account at [Neon](https://neon.tech)
+2. Create a new project and database
+3. Copy the connection string to your `.env` file
+
+### 3. Initialize Database
+
+Run the development setup script:
+
+```bash
+./scripts/dev-setup.sh
+```
+
+Or manually:
+
+```bash
+pnpm db:generate
+pnpm db:migrate:dev
+```
+
+### 4. Start Development Server
+
+```bash
 pnpm dev
 ```
 
