@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import fs from 'fs/promises'; // Add fs import for file cleanup
 
 export async function GET(request: NextRequest) {
   try {
@@ -100,17 +99,8 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'File not found' }, { status: 404 });
     }
 
-    // Delete the physical file from the uploads directory
-    try {
-      if (file.filePath) {
-        await fs.unlink(file.filePath);
-      }
-    } catch (fsError: any) {
-      // Log the error but don't block the DB record deletion
-      console.error(`Failed to delete physical file ${file.filePath}:`, fsError.message);
-    }
-
-    // Delete from database
+    // Files are processed directly without being stored on disk,
+    // so we only need to delete the database record
     await prisma.audioFile.delete({
       where: { id: fileId }
     });

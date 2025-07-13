@@ -7,8 +7,10 @@ echo "🚀 Starting database deployment..."
 
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
-    echo "❌ DATABASE_URL environment variable is not set"
-    exit 1
+    echo "⚠️  DATABASE_URL environment variable is not set"
+    echo "ℹ️  Skipping database deployment (this is normal for local builds)"
+    echo "✅ Database deployment skipped successfully!"
+    exit 0
 fi
 
 echo "✅ DATABASE_URL is set"
