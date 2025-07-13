@@ -145,7 +145,8 @@ async function processAudioFile(fileId: string, file: File, apiKey: string) {
     console.log(`✅ Successfully transcribed ${file.name} (${plainText?.length} chars, ${words.length} words with timestamps)`);
 
   } catch (error) {
-    console.error(`❌ Failed to process ${file.name}:`, error.message);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`❌ Failed to process ${file.name}:`, errorMessage);
     
     await prisma.audioFile.update({
       where: { id: fileId },
