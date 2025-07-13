@@ -44,6 +44,17 @@ export const authOptions: NextAuthOptions = {
       }
     })
   ],
+  pages: {
+    signIn: '/signin',
+  },
+  callbacks: {
+    async session({ session, token }) {
+      if (token && session.user) {
+        session.user.id = token.sub!;
+      }
+      return session;
+    },
+  },
   secret: process.env.NEXTAUTH_SECRET,
 };
 
