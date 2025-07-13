@@ -37,7 +37,7 @@ Or manually:
 
 ```bash
 pnpm db:generate
-pnpm db:migrate:dev
+pnpm db:push
 ```
 
 ### 4. Start Development Server

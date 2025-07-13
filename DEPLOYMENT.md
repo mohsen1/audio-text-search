@@ -76,14 +76,15 @@ Check Vercel build logs for:
 - Database migration output
 - Any build warnings or errors
 
-## Manual Migration (if needed)
+## Manual Database Setup (if needed)
 
-If you need to run migrations manually:
+If you need to set up the database manually:
 
 ```bash
 # Set your DATABASE_URL
 export DATABASE_URL="your-neon-connection-string"
 
-# Run migrations
-./scripts/migrate.sh
+# Generate Prisma client and create tables
+pnpm db:generate
+pnpm db:push
 ```
