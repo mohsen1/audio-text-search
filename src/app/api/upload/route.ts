@@ -98,6 +98,11 @@ async function processAudioFile(fileId: string, file: File, apiKey: string) {
     
     // Extract and store word-level timestamps
     const words = extractWordsFromElevenLabsResponse(transcriptionResult);
+    console.log(`📝 Extracted ${words.length} words from ElevenLabs response`);
+    
+    if (words.length > 0) {
+      console.log(`🔍 First few words with timestamps:`, words.slice(0, 5).map(w => `"${w.word}" (${w.start}s-${w.end}s)`));
+    }
     
     // Update audio file and store words in a transaction
     await prisma.$transaction(async (tx) => {
@@ -119,15 +124,21 @@ async function processAudioFile(fileId: string, file: File, apiKey: string) {
       
       // Insert new words if any were found
       if (words.length > 0) {
+        const wordsToInsert = words.map((word, index) => ({
+          audioFileId: fileId,
+          word: word.word,
+          startTime: word.start,
+          endTime: word.end,
+          wordIndex: index,
+        }));
+        
+        console.log(`💾 Storing ${wordsToInsert.length} words in database`);
         await tx.transcriptWord.createMany({
-          data: words.map((word, index) => ({
-            audioFileId: fileId,
-            word: word.word,
-            startTime: word.start,
-            endTime: word.end,
-            wordIndex: index,
-          })),
+          data: wordsToInsert,
         });
+        console.log(`✅ Successfully stored word-level timestamps in database`);
+      } else {
+        console.log(`⚠️ No words with timestamps found to store`);
       }
     });
     
@@ -152,21 +163,27 @@ interface ElevenLabsWord {
 
 function extractWordsFromElevenLabsResponse(transcriptionResult: any): ElevenLabsWord[] {
   try {
+    console.log(`🧪 ElevenLabs response structure:`, JSON.stringify(transcriptionResult, null, 2));
+    
     // Handle different ElevenLabs response formats
     let words: ElevenLabsWord[] = [];
     
     if (transcriptionResult.words && Array.isArray(transcriptionResult.words)) {
+      console.log(`📍 Found words array with ${transcriptionResult.words.length} words`);
       // Direct words array
       words = transcriptionResult.words;
     } else if (transcriptionResult.segments && Array.isArray(transcriptionResult.segments)) {
+      console.log(`📍 Found segments array with ${transcriptionResult.segments.length} segments`);
       // Segments containing words
       words = transcriptionResult.segments.flatMap((segment: any) => 
         segment.words || []
       );
     } else if (Array.isArray(transcriptionResult)) {
+      console.log(`📍 Response is directly an array with ${transcriptionResult.length} items`);
       // Array of words directly
       words = transcriptionResult;
     } else if (transcriptionResult.text && typeof transcriptionResult.text === 'string') {
+      console.log(`📍 Fallback: splitting text into words (no timestamps available)`);
       // Fallback: split text into words without timestamps
       const textWords = transcriptionResult.text.split(/\s+/);
       words = textWords.map((word: string, index: number) => ({
@@ -174,6 +191,8 @@ function extractWordsFromElevenLabsResponse(transcriptionResult: any): ElevenLab
         start: 0,
         end: 0
       }));
+    } else {
+      console.log(`⚠️ Unknown ElevenLabs response format:`, Object.keys(transcriptionResult));
     }
     
     // Filter and clean words

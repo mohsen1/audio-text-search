@@ -36,16 +36,25 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // Search for words in the database using word-level timestamps
-    const wordMatches = await prisma.transcriptWord.findMany({
+    // Search for words in the database using word-level timestamps with word boundaries
+    console.log(`🔍 Searching for word matches with query: "${query}"`);
+    
+    // Create word boundary patterns for SQLite - get all words that might match
+    const queryWords = query.toLowerCase().trim().split(/\s+/);
+    console.log(`📝 Query split into words:`, queryWords);
+    
+    // Get all potential word matches (we'll filter for word boundaries in memory)
+    const allWordMatches = await prisma.transcriptWord.findMany({
       where: {
         audioFile: {
           userId: session.user.id,
           status: 'completed'
         },
-        word: {
-          contains: query
-        }
+        OR: queryWords.map(queryWord => ({
+          word: {
+            contains: queryWord
+          }
+        }))
       },
       include: {
         audioFile: {
@@ -64,6 +73,17 @@ export async function GET(request: NextRequest) {
         { wordIndex: 'asc' }
       ]
     });
+    
+    // Filter for word boundaries in memory
+    const wordMatches = allWordMatches.filter(match => {
+      const cleanWord = match.word.toLowerCase().replace(/[^\w]/g, '');
+      return queryWords.some(queryWord => {
+        const cleanQuery = queryWord.replace(/[^\w]/g, '');
+        return cleanWord === cleanQuery || match.word.toLowerCase() === queryWord.toLowerCase();
+      });
+    });
+    
+    console.log(`📊 Found ${wordMatches.length} word matches in database`);
 
     // Also get files where the filename matches
     const filenameMatches = await prisma.audioFile.findMany({
@@ -88,8 +108,12 @@ export async function GET(request: NextRequest) {
     const fileResultsMap = new Map<string, SearchResult>();
     
     // Process word-level matches with exact timestamps
+    console.log(`🔄 Processing ${wordMatches.length} individual word matches`);
+    
     for (const wordMatch of wordMatches) {
       const fileId = wordMatch.audioFile.id;
+      
+      console.log(`⏰ Processing word match: "${wordMatch.word}" at ${wordMatch.startTime}s-${wordMatch.endTime}s in file ${wordMatch.audioFile.originalName}`);
       
       if (!fileResultsMap.has(fileId)) {
         fileResultsMap.set(fileId, {
@@ -105,13 +129,21 @@ export async function GET(request: NextRequest) {
       // Get context words around the match
       const contextWords = await getContextWords(fileId, wordMatch.wordIndex, 5);
       
-      fileResult.matches.push({
+      const match = {
         text: wordMatch.word,
         startTime: wordMatch.startTime,
         endTime: wordMatch.endTime,
         contextBefore: contextWords.before.map(w => w.word).join(' '),
         contextAfter: contextWords.after.map(w => w.word).join(' ')
-      });
+      };
+      
+      fileResult.matches.push(match);
+      console.log(`✅ Added match: "${match.text}" at ${match.startTime}s-${match.endTime}s`);
+    }
+    
+    // Log results per file
+    for (const [fileId, result] of fileResultsMap.entries()) {
+      console.log(`📁 File "${result.originalName}" has ${result.matches.length} matches`);
     }
     
     // Process filename matches (add files that match by name but may not have word matches)
@@ -133,6 +165,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Fallback: Search in transcript text for files without word-level data
+    console.log(`🔄 Searching for fallback matches in transcript text`);
     const filesWithoutWords = await prisma.audioFile.findMany({
       where: {
         userId: session.user.id,
@@ -154,6 +187,8 @@ export async function GET(request: NextRequest) {
       }
     });
     
+    console.log(`📋 Found ${filesWithoutWords.length} files without word data that match in transcript`);
+    
     // Add fallback matches for files without word-level data
     for (const file of filesWithoutWords) {
       if (!fileResultsMap.has(file.id) && file.transcription) {
@@ -172,15 +207,20 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Convert map to array and limit matches per file
+    // Convert map to array and sort matches by time within each file
     const results = Array.from(fileResultsMap.values()).map(result => ({
       ...result,
-      matches: result.matches.slice(0, 5) // Limit to top 5 matches per file
+      matches: result.matches
+        .sort((a, b) => a.startTime - b.startTime) // Sort by start time
+        .slice(0, 10) // Limit to top 10 matches per file for performance
     }));
 
     // Apply pagination to filtered results
     const total = results.length;
     const paginatedResults = results.slice(offset, offset + limit);
+    
+    console.log(`📋 Final results: ${total} files with matches, returning ${paginatedResults.length} files`);
+    console.log(`🎯 Results summary:`, paginatedResults.map(r => `${r.originalName}: ${r.matches.length} matches`));
 
     return NextResponse.json({
       results: paginatedResults,

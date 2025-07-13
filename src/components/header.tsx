@@ -2,6 +2,7 @@
 
 import { useSession, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft, Mic, FileText, Search, User, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   title?: string;
@@ -23,9 +24,10 @@ export default function Header({ title = "Audio Text Search", showBackButton = f
             {showBackButton && (
               <button
                 onClick={() => router.push(backTo)}
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
               >
-                ← Back
+                <ArrowLeft size={16} />
+                Back
               </button>
             )}
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -37,21 +39,24 @@ export default function Header({ title = "Audio Text Search", showBackButton = f
             <nav className="flex space-x-4">
               <button
                 onClick={() => router.push('/upload')}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium flex items-center gap-1"
               >
-                Upload
+                <Mic size={16} />
+                Transcribe
               </button>
               <button
                 onClick={() => router.push('/files')}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium flex items-center gap-1"
               >
+                <FileText size={16} />
                 Files
               </button>
               <button
                 onClick={() => router.push('/search')}
-                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium flex items-center gap-1"
               >
-                🔍 Search
+                <Search size={16} />
+                Search
               </button>
             </nav>
             <div className="border-l border-gray-300 dark:border-gray-600 h-6"></div>
@@ -60,14 +65,16 @@ export default function Header({ title = "Audio Text Search", showBackButton = f
             </span>
             <button
               onClick={() => router.push('/profile')}
-              className="text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+              className="text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white flex items-center gap-1"
             >
+              <User size={16} />
               Profile
             </button>
             <button
               onClick={() => signOut()}
-              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+              className="text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 flex items-center gap-1"
             >
+              <LogOut size={16} />
               Sign out
             </button>
           </div>

@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Upload, Play, CheckCircle, XCircle, FileText, Eye, Mic } from 'lucide-react';
 import Header from '@/components/header';
 
 interface UploadedFile {
@@ -215,7 +216,7 @@ export default function UploadPage() {
 
   const getStatusText = (status: UploadedFile['status'], progress: number) => {
     switch (status) {
-      case 'pending': return 'Ready to upload';
+      case 'pending': return 'Ready to transcribe';
       case 'uploading': return 'Uploading...';
       case 'processing': return 'Processing with ElevenLabs Scribe...';
       case 'completed': return 'Transcription completed ✅';
@@ -245,12 +246,12 @@ export default function UploadPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header title="Upload Audio Files" showBackButton={true} />
+      <Header title="Transcribe Audio Files" showBackButton={true} />
       
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="mb-8">
           <p className="text-gray-600 dark:text-gray-300">
-            Upload your audio files to transcribe them using ElevenLabs Scribe
+            Transcribe your audio files using ElevenLabs Scribe
           </p>
         </div>
 
@@ -267,9 +268,11 @@ export default function UploadPage() {
         onDrop={handleDrop}
       >
         <div className="space-y-4">
-          <div className="text-4xl">🎵</div>
+          <div className="text-4xl text-blue-500">
+            <Mic className="mx-auto" size={48} />
+          </div>
           <div>
-            <h3 className="text-lg font-medium">Drop audio files here</h3>
+            <h3 className="text-lg font-medium">Drop audio files to transcribe</h3>
             <p className="text-gray-500">or click to select files</p>
           </div>
           <input
@@ -282,8 +285,9 @@ export default function UploadPage() {
           />
           <label
             htmlFor="file-input"
-            className="inline-block bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg cursor-pointer transition-colors"
+            className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg cursor-pointer transition-colors whitespace-nowrap"
           >
+            <FileText size={16} />
             Select Files
           </label>
         </div>
@@ -297,9 +301,10 @@ export default function UploadPage() {
             <button
               onClick={uploadAllFiles}
               disabled={!files.some(f => f.status === 'pending')}
-              className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition-colors"
+              className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
             >
-              Upload All
+              <Upload size={16} />
+              Transcribe All
             </button>
           </div>
 
@@ -327,9 +332,10 @@ export default function UploadPage() {
                     {file.status === 'pending' && (
                       <button
                         onClick={() => uploadFile(index)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
                       >
-                        Upload
+                        <Upload size={14} />
+                        Transcribe
                       </button>
                     )}
                     
@@ -350,18 +356,25 @@ export default function UploadPage() {
 
                     {file.status === 'completed' && (
                       <div className="flex items-center space-x-2">
-                        <div className="text-green-600 font-medium text-sm">✅ Complete</div>
+                        <div className="text-green-600 font-medium text-sm flex items-center gap-1">
+                          <CheckCircle size={16} />
+                          Complete
+                        </div>
                         <button
                           onClick={() => router.push('/files')}
-                          className="text-blue-600 hover:text-blue-800 text-sm underline"
+                          className="text-blue-600 hover:text-blue-800 text-sm underline flex items-center gap-1"
                         >
+                          <Eye size={14} />
                           View Result
                         </button>
                       </div>
                     )}
 
                     {file.status === 'failed' && (
-                      <div className="text-red-600 font-medium text-sm">❌ Failed</div>
+                      <div className="text-red-600 font-medium text-sm flex items-center gap-1">
+                        <XCircle size={16} />
+                        Failed
+                      </div>
                     )}
 
                     <button

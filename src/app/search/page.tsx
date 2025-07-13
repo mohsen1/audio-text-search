@@ -191,55 +191,67 @@ export default function SearchPage() {
                       </button>
                     </div>
 
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {result.matches.map((match, index) => (
-                        <div key={index} className="border-l-4 border-blue-200 pl-4 py-3 bg-gray-50 dark:bg-gray-700/50 rounded-r-lg">
-                          {/* Clear statement about the match */}
+                        <div key={index} className="border border-gray-200 dark:border-gray-600 rounded-lg p-4 bg-white dark:bg-gray-800">
+                          {/* Header with timestamp and match info */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              {match.startTime > 0 ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg font-mono bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-lg">
+                                    🕒 {formatTime(match.startTime)}
+                                    {match.endTime !== match.startTime && ` - ${formatTime(match.endTime)}`}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      // TODO: Implement audio player with jump-to-time
+                                      console.log(`Jump to ${formatTime(match.startTime)} in ${result.originalName}`);
+                                    }}
+                                    className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg transition-colors text-sm"
+                                  >
+                                    🎵 Play
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-sm bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-1 rounded">
+                                  No timestamp
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-500">
+                              Match #{index + 1}
+                            </span>
+                          </div>
+
+                          {/* Match statement */}
                           <div className="mb-3">
                             <p className="text-sm font-medium text-gray-900 dark:text-white">
-                              Found "{highlightMatch(match.text, searchResults.query)}" in file <span className="text-blue-600 font-semibold">{result.originalName}</span>
+                              Found "{highlightMatch(match.text, searchResults.query)}" in 
+                              <span className="text-blue-600 font-semibold ml-1">{result.originalName}</span>
                               {match.startTime > 0 && (
-                                <span className="text-gray-600 dark:text-gray-300">
-                                  {' '}at time {formatTime(match.startTime)}
-                                  {match.endTime !== match.startTime && ` - ${formatTime(match.endTime)}`}
+                                <span className="text-gray-600 dark:text-gray-300 ml-1">
+                                  at {formatTime(match.startTime)}
                                 </span>
                               )}
                             </p>
                           </div>
 
-                          {/* Context and controls */}
-                          <div className="space-y-2">
-                            <div className="text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 p-3 rounded">
+                          {/* Context */}
+                          <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                            <div className="text-sm text-gray-700 dark:text-gray-300">
                               <span className="text-gray-400">...</span>
                               {match.contextBefore && (
                                 <span className="mr-1">{match.contextBefore}</span>
                               )}
-                              <span className="font-semibold bg-yellow-100 dark:bg-yellow-900 px-1 rounded">
-                                {match.text}
+                              <span className="font-bold bg-yellow-200 dark:bg-yellow-800 px-1 py-0.5 rounded">
+                                {highlightMatch(match.text, searchResults.query)}
                               </span>
                               {match.contextAfter && (
                                 <span className="ml-1">{match.contextAfter}</span>
                               )}
                               <span className="text-gray-400">...</span>
                             </div>
-                            
-                            {match.startTime > 0 && (
-                              <div className="flex items-center gap-3">
-                                <span className="text-xs font-mono bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-                                  🕒 {formatTime(match.startTime)}
-                                  {match.endTime !== match.startTime && ` - ${formatTime(match.endTime)}`}
-                                </span>
-                                <button
-                                  onClick={() => {
-                                    // TODO: Implement audio player with jump-to-time
-                                    console.log(`Jump to ${formatTime(match.startTime)} in ${result.originalName}`);
-                                  }}
-                                  className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
-                                >
-                                  🎵 Play from this time
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </div>
                       ))}
