@@ -13,6 +13,8 @@ interface UploadedFile {
   progress: number;
   error?: string;
   transcription?: string;
+  estimatedDurationMs?: number;
+  startTime?: number;
 }
 
 export default function UploadPage() {
@@ -71,10 +73,21 @@ export default function UploadPage() {
       audioFiles: audioFiles.map(f => ({ name: f.name, size: f.size, type: f.type }))
     });
     
+    // Estimate transcription duration based on file size
+    // Rough estimation: 1MB ≈ 10-15 seconds of audio ≈ 10-15 seconds transcription time
+    const estimateTranscriptionTime = (fileSize: number) => {
+      const sizeMB = fileSize / (1024 * 1024);
+      if (sizeMB < 1) return 15000; // 15 seconds for small files
+      if (sizeMB < 5) return sizeMB * 12000; // ~12 seconds per MB
+      if (sizeMB < 20) return sizeMB * 15000; // ~15 seconds per MB
+      return sizeMB * 18000; // ~18 seconds per MB for larger files
+    };
+    
     const uploadFiles: UploadedFile[] = audioFiles.map(file => ({
       file,
       status: 'pending',
-      progress: 0
+      progress: 0,
+      estimatedDurationMs: estimateTranscriptionTime(file.size)
     }));
     
     console.log('✅ Files added to state');
@@ -115,18 +128,24 @@ export default function UploadPage() {
       return;
     }
 
+    const startTime = Date.now();
+    const estimatedDuration = fileToUpload.estimatedDurationMs || 30000; // Default 30 seconds
+
     setFiles(prev => prev.map((f, i) => 
-      i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
+      i === fileIndex ? { ...f, status: 'uploading', progress: 0, startTime } : f
     ));
 
-    // Progress simulation for server-side upload
+    // Realistic progress updates based on estimated time
     const progressInterval = setInterval(() => {
-      setFiles(prev => prev.map((f, i) => 
-        i === fileIndex && f.status === 'uploading' 
-          ? { ...f, progress: Math.min(f.progress + 10, 90) } 
-          : f
-      ));
-    }, 200);
+      setFiles(prev => prev.map((f, i) => {
+        if (i === fileIndex && f.status === 'uploading' && f.startTime) {
+          const elapsed = Date.now() - f.startTime;
+          const expectedProgress = Math.min((elapsed / estimatedDuration) * 85, 85); // Cap at 85% until completion
+          return { ...f, progress: Math.round(expectedProgress) };
+        }
+        return f;
+      }));
+    }, 500); // Update every 500ms for smoother progress
 
     try {
       const formData = new FormData();
@@ -145,7 +164,7 @@ export default function UploadPage() {
           i === fileIndex ? { 
             ...f, 
             status: 'processing', 
-            progress: 70,
+            progress: 90,
             id: result.fileId 
           } : f
         ));
@@ -180,16 +199,28 @@ export default function UploadPage() {
       constructor: fileToUpload.file.constructor.name
     });
 
+    const startTime = Date.now();
+    const estimatedDuration = fileToUpload.estimatedDurationMs || 30000; // Default 30 seconds
+
     setFiles(prev => prev.map((f, i) => 
-      i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
+      i === fileIndex ? { ...f, status: 'uploading', progress: 0, startTime } : f
     ));
+
+    // Realistic progress updates based on estimated transcription time
+    const progressInterval = setInterval(() => {
+      setFiles(prev => prev.map((f, i) => {
+        if (i === fileIndex && f.status === 'uploading' && f.startTime) {
+          const elapsed = Date.now() - f.startTime;
+          const expectedProgress = Math.min((elapsed / estimatedDuration) * 85, 85); // Cap at 85% until completion
+          return { ...f, progress: Math.round(expectedProgress) };
+        }
+        return f;
+      }));
+    }, 500); // Update every 500ms for smoother progress
 
     try {
       // Step 1: Get ElevenLabs API key
       console.log('🔑 Fetching ElevenLabs API key...');
-      setFiles(prev => prev.map((f, i) => 
-        i === fileIndex ? { ...f, progress: 10 } : f
-      ));
 
       const apiKeyResponse = await fetch('/api/user/elevenlabs-key?forUpload=true');
       if (!apiKeyResponse.ok) {
@@ -203,9 +234,6 @@ export default function UploadPage() {
 
       // Step 2: Send file directly to ElevenLabs
       console.log('🎵 Sending file to ElevenLabs for transcription...');
-      setFiles(prev => prev.map((f, i) => 
-        i === fileIndex ? { ...f, progress: 30 } : f
-      ));
 
       const formData = new FormData();
       formData.append('model_id', 'scribe_v1');
@@ -224,8 +252,10 @@ export default function UploadPage() {
         throw new Error(`ElevenLabs API error: ${transcriptionResponse.status} - ${errorText}`);
       }
 
+      // Clear the progress interval and set to processing
+      clearInterval(progressInterval);
       setFiles(prev => prev.map((f, i) => 
-        i === fileIndex ? { ...f, progress: 70 } : f
+        i === fileIndex ? { ...f, status: 'processing', progress: 90 } : f
       ));
 
       const transcriptionResult = await transcriptionResponse.json();
@@ -234,7 +264,7 @@ export default function UploadPage() {
       // Step 3: Send transcription results to our backend
       console.log('💾 Storing transcription results...');
       setFiles(prev => prev.map((f, i) => 
-        i === fileIndex ? { ...f, status: 'processing', progress: 80 } : f
+        i === fileIndex ? { ...f, progress: 95 } : f
       ));
 
       const storeResponse = await fetch('/api/upload/result', {
@@ -268,6 +298,7 @@ export default function UploadPage() {
       ));
 
     } catch (error) {
+      clearInterval(progressInterval);
       console.error('❌ Transcription failed:', error);
       setFiles(prev => prev.map((f, i) => 
         i === fileIndex ? { 
@@ -359,8 +390,8 @@ export default function UploadPage() {
     switch (status) {
       case 'pending': return 'Ready to transcribe';
       case 'uploading': 
-        if (progress < 20) return 'Getting API key...';
-        if (progress < 70) return 'Transcribing with ElevenLabs...';
+        if (progress < 5) return 'Getting API key...';
+        if (progress < 85) return 'Transcribing with ElevenLabs...';
         return 'Storing results...';
       case 'processing': return 'Finalizing transcription...';
       case 'completed': return 'Transcription completed ✅';
@@ -536,7 +567,18 @@ export default function UploadPage() {
                         {file.status === 'processing' && (
                           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
                             <div className="w-1 h-1 bg-yellow-500 rounded-full animate-pulse"></div>
-                            This may take 1-2 minutes depending on file length
+                            Finalizing transcription results
+                          </div>
+                        )}
+                        {file.status === 'uploading' && file.estimatedDurationMs && file.startTime && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                            <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
+                            Estimated time: {Math.round(file.estimatedDurationMs / 1000)} seconds
+                            {(() => {
+                              const elapsed = Date.now() - file.startTime;
+                              const remaining = Math.max(0, file.estimatedDurationMs - elapsed);
+                              return remaining > 1000 ? ` (${Math.round(remaining / 1000)}s remaining)` : '';
+                            })()}
                           </div>
                         )}
                       </div>
