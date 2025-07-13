@@ -93,6 +93,7 @@ async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFil
     formData.append('model_id', 'scribe_v1');
     formData.append('file', blob, originalFileName);
     formData.append('timestamps_granularity', 'word');
+    formData.append('output_format', 'verbose_json');
 
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',
@@ -107,16 +108,22 @@ async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFil
 
     const transcriptionResult = await response.json();
     
+    // Extract plain text for simple search compatibility
+    const plainText = typeof transcriptionResult === 'string' 
+      ? transcriptionResult 
+      : transcriptionResult.text || JSON.stringify(transcriptionResult);
+    
     await prisma.audioFile.update({
       where: { id: fileId },
       data: {
-        transcription: transcriptionResult.text,
+        transcription: plainText,
+        transcriptData: JSON.stringify(transcriptionResult), // Store full response for timestamp search
         status: 'completed',
         processedAt: new Date(),
       },
     });
     
-    console.log(`✅ Successfully transcribed ${originalFileName} (${transcriptionResult.text?.length} chars)`);
+    console.log(`✅ Successfully transcribed ${originalFileName} (${plainText?.length} chars)`);
 
   } catch (error) {
     console.error(`❌ Failed to process ${originalFileName}:`, error.message);

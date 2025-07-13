@@ -34,6 +34,27 @@ export default function Header({ title = "Audio Text Search", showBackButton = f
           </div>
           
           <div className="flex items-center space-x-4">
+            <nav className="flex space-x-4">
+              <button
+                onClick={() => router.push('/upload')}
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+              >
+                Upload
+              </button>
+              <button
+                onClick={() => router.push('/files')}
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+              >
+                Files
+              </button>
+              <button
+                onClick={() => router.push('/search')}
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
+              >
+                🔍 Search
+              </button>
+            </nav>
+            <div className="border-l border-gray-300 dark:border-gray-600 h-6"></div>
             <span className="text-sm text-gray-600 dark:text-gray-300">
               {session.user?.name || session.user?.email}
             </span>

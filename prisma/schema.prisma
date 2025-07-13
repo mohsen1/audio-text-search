@@ -67,6 +67,7 @@ model AudioFile {
   fileSize      Int
   mimeType      String
   transcription String?
+  transcriptData String?  // JSON string containing detailed transcript with timestamps
   uploadedAt    DateTime @default(now())
   processedAt   DateTime?
   status        String   @default("processing") // "processing", "completed", "failed"
