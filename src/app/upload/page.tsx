@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Upload, CheckCircle, XCircle, FileText, Eye, Mic } from 'lucide-react';
+import { Upload, CheckCircle, XCircle, FileText, Eye, Mic, ArrowRight, Clock, AlertCircle } from 'lucide-react';
 import Header from '@/components/header';
 
 interface UploadedFile {
@@ -379,6 +379,28 @@ export default function UploadPage() {
     }
   };
 
+  const getStatusIcon = (status: UploadedFile['status']) => {
+    switch (status) {
+      case 'pending': return <Upload className="h-4 w-4 text-gray-600" />;
+      case 'uploading': return <Upload className="h-4 w-4 text-blue-600" />;
+      case 'processing': return <div className="h-4 w-4 border-2 border-yellow-600 border-t-transparent rounded-full animate-spin" />;
+      case 'completed': return <CheckCircle className="h-4 w-4 text-green-600" />;
+      case 'failed': return <XCircle className="h-4 w-4 text-red-600" />;
+      default: return <FileText className="h-4 w-4 text-gray-600" />;
+    }
+  };
+
+  const getStatusIconBg = (status: UploadedFile['status']) => {
+    switch (status) {
+      case 'pending': return 'bg-gray-100 dark:bg-gray-700';
+      case 'uploading': return 'bg-blue-100 dark:bg-blue-900/30';
+      case 'processing': return 'bg-yellow-100 dark:bg-yellow-900/30';
+      case 'completed': return 'bg-green-100 dark:bg-green-900/30';
+      case 'failed': return 'bg-red-100 dark:bg-red-900/30';
+      default: return 'bg-gray-100 dark:bg-gray-700';
+    }
+  };
+
   if (status === 'loading') {
     return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
   }
@@ -389,182 +411,254 @@ export default function UploadPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       <Header title="Transcribe Audio Files" showBackButton={true} />
       
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <div className="mb-8">
-          <p className="text-gray-600 dark:text-gray-300">
-            Transcribe your audio files using ElevenLabs Scribe. Files are processed directly in your browser for faster uploads and support for large files.
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        {/* Page Header */}
+        <div className="text-center mb-12">
+          <div className="flex justify-center mb-6">
+            <div className="p-4 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl shadow-lg">
+              <Mic className="h-12 w-12 text-white" />
+            </div>
+          </div>
+          <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-4">
+            AI Audio Transcription
+          </h2>
+          <p className="text-lg text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+            Transform your audio files into searchable text using ElevenLabs Scribe. 
+            Files are processed securely with enterprise-grade AI for maximum accuracy.
           </p>
         </div>
 
-      {/* Upload Area */}
-      <div
-        className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-          dragActive 
-            ? 'border-blue-400 bg-blue-50' 
-            : 'border-gray-300 hover:border-gray-400'
-        }`}
-        onDragEnter={handleDrag}
-        onDragLeave={handleDrag}
-        onDragOver={handleDrag}
-        onDrop={handleDrop}
-      >
-        <div className="space-y-4">
-          <div className="text-4xl text-blue-500">
-            <Mic className="mx-auto" size={48} />
-          </div>
-          <div>
-            <h3 className="text-lg font-medium">Drop audio files to transcribe</h3>
-            <p className="text-gray-500">or click to select files</p>
-          </div>
-          <input
-            type="file"
-            multiple
-            accept="audio/*"
-            onChange={handleFileInput}
-            className="hidden"
-            id="file-input"
-          />
-          <label
-            htmlFor="file-input"
-            className="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg cursor-pointer transition-colors whitespace-nowrap"
-          >
-            <FileText size={16} />
-            Select Files
-          </label>
-        </div>
-      </div>
-
-      {/* File List */}
-      {files.length > 0 && (
-        <div className="mt-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-xl font-semibold">Files ({files.length})</h2>
-            <button
-              onClick={uploadAllFiles}
-              disabled={!files.some(f => f.status === 'pending')}
-              className="bg-green-500 hover:bg-green-600 disabled:bg-gray-300 text-white px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+        {/* Upload Area */}
+        <div
+          className={`relative bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm border-2 border-dashed rounded-2xl p-12 text-center transition-all duration-300 shadow-lg ${
+            dragActive 
+              ? 'border-blue-400 bg-blue-50/80 dark:bg-blue-900/20 scale-105' 
+              : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-xl'
+          }`}
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+        >
+          <div className="space-y-6">
+            <div className={`transition-all duration-300 ${dragActive ? 'scale-110' : ''}`}>
+              <div className={`mx-auto w-16 h-16 rounded-full flex items-center justify-center ${
+                dragActive 
+                  ? 'bg-blue-100 dark:bg-blue-900/50' 
+                  : 'bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/50 dark:to-purple-900/50'
+              }`}>
+                <Mic className={`h-8 w-8 ${dragActive ? 'text-blue-600' : 'text-blue-500'}`} />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                {dragActive ? 'Drop your audio files here' : 'Upload Audio Files'}
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                Supports MP3, WAV, M4A, FLAC and more audio formats
+              </p>
+              <div className="flex flex-wrap justify-center gap-2 text-xs text-gray-500 dark:text-gray-400 mb-6">
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">MP3</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">WAV</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">M4A</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">FLAC</span>
+                <span className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">OGG</span>
+              </div>
+            </div>
+            <input
+              type="file"
+              multiple
+              accept="audio/*"
+              onChange={handleFileInput}
+              className="hidden"
+              id="file-input"
+            />
+            <label
+              htmlFor="file-input"
+              className="inline-flex items-center gap-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-8 py-4 rounded-xl cursor-pointer transition-all transform hover:scale-105 shadow-lg font-semibold"
             >
-              <Upload size={16} />
-              Transcribe All
-            </button>
+              <FileText size={20} />
+              Choose Audio Files
+            </label>
           </div>
+        </div>
 
-          <div className="space-y-3">
-            {files.map((file, index) => (
-              <div key={index} className="border rounded-lg">
-                <div className="flex items-center justify-between p-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium truncate">{file.file.name}</div>
-                    <div className="text-sm text-gray-500">
-                      {(file.file.size / 1024 / 1024).toFixed(2)} MB
-                    </div>
-                    <div className={`text-sm font-medium ${getStatusColor(file.status)}`}>
-                      {getStatusText(file.status, file.progress)}
-                      {file.error && ` - ${file.error}`}
-                    </div>
-                    {file.status === 'processing' && (
-                      <div className="text-xs text-gray-400 mt-1">
-                        This may take 1-2 minutes depending on file length
-                      </div>
-                    )}
+        {/* File List */}
+        {files.length > 0 && (
+          <div className="mt-12">
+            <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 dark:border-gray-700/50">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+                  <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg">
+                    <FileText className="h-5 w-5 text-white" />
                   </div>
+                  Files Queue ({files.length})
+                </h2>
+                <button
+                  onClick={uploadAllFiles}
+                  disabled={!files.some(f => f.status === 'pending')}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-300 disabled:to-gray-400 text-white px-6 py-3 rounded-xl transition-all transform hover:scale-105 disabled:hover:scale-100 flex items-center gap-2 font-semibold shadow-lg"
+                >
+                  <Upload size={18} />
+                  Transcribe All
+                </button>
+              </div>
 
-                  <div className="flex items-center space-x-2">
-                    {file.status === 'pending' && (
-                      <button
-                        onClick={() => uploadFile(index)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors flex items-center gap-1"
-                      >
-                        <Upload size={14} />
-                        Transcribe
-                      </button>
-                    )}
-                    
-                    {(file.status === 'uploading' || file.status === 'processing') && (
-                      <div className="w-32">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>{file.status === 'uploading' ? 'Uploading' : 'Processing'}</span>
-                          <span>{file.progress}%</span>
+              <div className="space-y-4">
+                {files.map((file, index) => (
+                  <div key={index} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden shadow-sm hover:shadow-md transition-all">
+                    <div className="flex items-center justify-between p-6">
+                      <div className="flex-1 min-w-0 mr-4">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className={`p-2 rounded-lg ${getStatusIconBg(file.status)}`}>
+                            {getStatusIcon(file.status)}
+                          </div>
+                          <div>
+                            <div className="font-semibold text-gray-900 dark:text-white truncate">
+                              {file.file.name}
+                            </div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                              {(file.file.size / 1024 / 1024).toFixed(2)} MB • {file.file.type}
+                            </div>
+                          </div>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(file.status)}`}
-                            style={{ width: `${file.progress}%` }}
-                          />
+                        <div className={`text-sm font-medium ${getStatusColor(file.status)} flex items-center gap-2`}>
+                          {getStatusText(file.status, file.progress)}
+                          {file.error && (
+                            <span className="text-red-600 dark:text-red-400">
+                              - {file.error}
+                            </span>
+                          )}
                         </div>
+                        {file.status === 'processing' && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                            <div className="w-1 h-1 bg-yellow-500 rounded-full animate-pulse"></div>
+                            This may take 1-2 minutes depending on file length
+                          </div>
+                        )}
                       </div>
-                    )}
 
-                    {file.status === 'completed' && (
-                      <div className="flex items-center space-x-2">
-                        <div className="text-green-600 font-medium text-sm flex items-center gap-1">
-                          <CheckCircle size={16} />
-                          Complete
-                        </div>
+                      <div className="flex items-center space-x-3">
+                        {file.status === 'pending' && (
+                          <button
+                            onClick={() => uploadFile(index)}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-all transform hover:scale-105 flex items-center gap-2 font-medium shadow-md"
+                          >
+                            <Upload size={16} />
+                            Transcribe
+                          </button>
+                        )}
+                        
+                        {(file.status === 'uploading' || file.status === 'processing') && (
+                          <div className="w-40">
+                            <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
+                              <span className="font-medium">
+                                {file.status === 'uploading' ? 'Transcribing' : 'Processing'}
+                              </span>
+                              <span className="font-semibold">{file.progress}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
+                              <div
+                                className={`h-2 rounded-full transition-all duration-500 ${getProgressColor(file.status)}`}
+                                style={{ width: `${file.progress}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {file.status === 'completed' && (
+                          <div className="flex items-center space-x-3">
+                            <div className="text-green-600 dark:text-green-400 font-semibold text-sm flex items-center gap-2 bg-green-50 dark:bg-green-900/20 px-3 py-2 rounded-lg">
+                              <CheckCircle size={16} />
+                              Complete
+                            </div>
+                            <button
+                              onClick={() => router.push('/files')}
+                              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-3 py-2 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-all"
+                            >
+                              <Eye size={16} />
+                              View Result
+                            </button>
+                          </div>
+                        )}
+
+                        {file.status === 'failed' && (
+                          <div className="text-red-600 dark:text-red-400 font-semibold text-sm flex items-center gap-2 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">
+                            <XCircle size={16} />
+                            Failed
+                          </div>
+                        )}
+
                         <button
-                          onClick={() => router.push('/files')}
-                          className="text-blue-600 hover:text-blue-800 text-sm underline flex items-center gap-1"
+                          onClick={() => removeFile(index)}
+                          className="text-gray-400 hover:text-red-500 dark:hover:text-red-400 p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                          title="Remove file"
                         >
-                          <Eye size={14} />
-                          View Result
+                          <XCircle size={18} />
                         </button>
                       </div>
-                    )}
-
-                    {file.status === 'failed' && (
-                      <div className="text-red-600 font-medium text-sm flex items-center gap-1">
-                        <XCircle size={16} />
-                        Failed
+                    </div>
+                    
+                    {/* Transcription Preview for Completed Files */}
+                    {file.status === 'completed' && file.transcription && (
+                      <div className="px-6 pb-6">
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4">
+                          <h4 className="text-sm font-semibold text-green-800 dark:text-green-400 mb-3 flex items-center gap-2">
+                            <CheckCircle size={16} />
+                            Transcription Preview
+                          </h4>
+                          <p className="text-sm text-green-700 dark:text-green-300 leading-relaxed">
+                            {file.transcription.length > 200 
+                              ? file.transcription.substring(0, 200) + '...' 
+                              : file.transcription
+                            }
+                          </p>
+                          {file.transcription.length > 200 && (
+                            <button
+                              onClick={() => router.push('/files')}
+                              className="text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 text-sm font-medium mt-3 flex items-center gap-1 hover:underline"
+                            >
+                              View Full Transcription
+                              <ArrowRight size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
-
-                    <button
-                      onClick={() => removeFile(index)}
-                      className="text-red-500 hover:text-red-700 p-1"
-                    >
-                      ✕
-                    </button>
                   </div>
-                </div>
-                
-                {/* Transcription Preview for Completed Files */}
-                {file.status === 'completed' && file.transcription && (
-                  <div className="mx-4 mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <h4 className="text-sm font-medium text-green-800 mb-2">Transcription Preview:</h4>
-                    <p className="text-sm text-green-700 leading-relaxed">
-                      {file.transcription.length > 200 
-                        ? file.transcription.substring(0, 200) + '...' 
-                        : file.transcription
-                      }
-                    </p>
-                    {file.transcription.length > 200 && (
-                      <button
-                        onClick={() => router.push('/files')}
-                        className="text-green-600 hover:text-green-800 text-sm underline mt-2 block"
-                      >
-                        View Full Transcription
-                      </button>
-                    )}
-                  </div>
-                )}
+                ))}
               </div>
-            ))}
+            </div>
+          </div>
+        )}
+
+        {/* Navigation */}
+        <div className="mt-12 text-center">
+          <div className="bg-white/70 dark:bg-gray-800/70 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20 dark:border-gray-700/50">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              What&apos;s Next?
+            </h3>
+            <div className="flex flex-wrap justify-center gap-4">
+              <button
+                onClick={() => router.push('/files')}
+                className="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl transition-all transform hover:scale-105 flex items-center gap-2 font-medium shadow-lg"
+              >
+                <FileText size={18} />
+                View My Files
+              </button>
+              <button
+                onClick={() => router.push('/search')}
+                className="bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white px-6 py-3 rounded-xl transition-all transform hover:scale-105 flex items-center gap-2 font-medium shadow-lg"
+              >
+                <Eye size={18} />
+                Search Transcriptions
+              </button>
+            </div>
           </div>
         </div>
-      )}
-
-      {/* Navigation */}
-      <div className="mt-8 flex justify-center">
-        <button
-          onClick={() => router.push('/files')}
-          className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          View My Files
-        </button>
-      </div>
       </div>
     </div>
   );
