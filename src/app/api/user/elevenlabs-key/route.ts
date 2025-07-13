@@ -17,6 +17,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'API key is required' }, { status: 400 });
     }
 
+    // Check if user exists first
+    const existingUser = await prisma.user.findUnique({
+      where: { id: session.user.id }
+    });
+
+    if (!existingUser) {
+      return NextResponse.json({ 
+        error: 'User record not found. Please sign out and sign in again.' 
+      }, { status: 404 });
+    }
+
     await prisma.user.update({
       where: { id: session.user.id },
       data: { elevenlabsApiKey: apiKey }

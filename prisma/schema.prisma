@@ -63,7 +63,7 @@ model AudioFile {
   id            String   @id @default(cuid())
   fileName      String
   originalName  String
-  filePath      String
+  filePath      String   // Store file location on disk
   fileSize      Int
   mimeType      String
   transcription String?

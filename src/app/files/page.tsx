@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/header';
 
 interface AudioFile {
   id: string;
@@ -66,20 +67,6 @@ export default function FilesPage() {
     }
   };
 
-  useEffect(() => {
-    fetchFiles();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, search, statusFilter]);
-
-  if (status === 'loading') {
-    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
-  }
-
-  if (!session) {
-    router.push('/signin');
-    return null;
-  }
-
   const handleDelete = async (fileId: string) => {
     if (!confirm('Are you sure you want to delete this file?')) return;
 
@@ -124,26 +111,34 @@ export default function FilesPage() {
     }
   };
 
+  useEffect(() => {
+    fetchFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, search, statusFilter]);
+
+  if (status === 'loading') {
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
+  }
+
+  if (!session) {
+    router.push('/signin');
+    return null;
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
-      <div className="mb-8">
-        <div className="flex justify-between items-center mb-4">
-          <div className="flex items-center space-x-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Header title="My Audio Files" showBackButton={true} />
+      
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <div className="mb-8">
+          <div className="flex justify-end mb-4">
             <button
-              onClick={() => router.push('/')}
-              className="text-blue-600 hover:text-blue-800 font-medium"
+              onClick={() => router.push('/upload')}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
             >
-              ← Dashboard
+              Upload New Files
             </button>
-            <h1 className="text-3xl font-bold">My Audio Files</h1>
           </div>
-          <button
-            onClick={() => router.push('/upload')}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            Upload New Files
-          </button>
-        </div>
 
         {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row gap-4">
@@ -270,6 +265,7 @@ export default function FilesPage() {
           Showing {files.length} of {pagination.total} files
         </div>
       )}
+    </div>
     </div>
   );
 }

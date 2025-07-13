@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/header';
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
@@ -110,24 +111,7 @@ export default function ProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Header */}
-      <header className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => router.push('/')}
-                className="text-blue-600 hover:text-blue-800 font-medium"
-              >
-                ← Back to Dashboard
-              </button>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                Profile Settings
-              </h1>
-            </div>
-          </div>
-        </div>
-      </header>
+      <Header title="Profile Settings" showBackButton={true} />
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -183,7 +167,7 @@ export default function ProfilePage() {
                     ElevenLabs API Key
                   </h3>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                    Required for speech-to-text transcription of audio files
+                    Required for speech-to-text transcription using ElevenLabs Scribe
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -328,7 +312,7 @@ export default function ProfilePage() {
               <strong>Security:</strong> Your API keys are encrypted and stored securely. Only you can access them.
             </p>
             <p>
-              <strong>Usage:</strong> API keys are only used for transcribing your uploaded audio files.
+              <strong>Usage:</strong> API keys are only used for transcribing your uploaded audio files using ElevenLabs Scribe.
             </p>
           </div>
         </div>

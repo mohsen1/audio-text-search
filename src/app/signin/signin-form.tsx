@@ -54,7 +54,8 @@ export default function SignInForm() {
       if (result?.ok) {
         router.push("/");
       } else {
-        setError("Invalid username or password");
+        console.error("Signin failed:", result?.error);
+        setError(result?.error || "Invalid username or password");
       }
     }
 

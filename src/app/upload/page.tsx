@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/header';
 
 interface UploadedFile {
   file: File;
@@ -10,6 +11,7 @@ interface UploadedFile {
   status: 'pending' | 'uploading' | 'processing' | 'completed' | 'failed';
   progress: number;
   error?: string;
+  transcription?: string;
 }
 
 export default function UploadPage() {
@@ -18,13 +20,63 @@ export default function UploadPage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [dragActive, setDragActive] = useState(false);
 
+  // Poll for processing status updates
+  useEffect(() => {
+    const processingFiles = files.filter(f => f.status === 'processing' && f.id);
+    
+    if (processingFiles.length === 0) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        for (const file of processingFiles) {
+          const response = await fetch(`/api/files/status?id=${file.id}`);
+          if (response.ok) {
+            const { status: newStatus, transcription } = await response.json();
+            
+            setFiles(prev => prev.map(f => 
+              f.id === file.id 
+                ? { 
+                    ...f, 
+                    status: newStatus,
+                    progress: newStatus === 'completed' ? 100 : f.progress,
+                    transcription: transcription || f.transcription
+                  }
+                : f
+            ));
+          }
+        }
+      } catch (error) {
+        console.error('Error polling status:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [files]);
+
   const addFiles = (newFiles: File[]) => {
+    console.log('📂 Adding files:', {
+      totalFiles: newFiles.length,
+      fileDetails: newFiles.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        lastModified: f.lastModified
+      }))
+    });
+    
     const audioFiles = newFiles.filter(file => file.type.startsWith('audio/'));
+    console.log('🎵 Audio files filtered:', {
+      audioCount: audioFiles.length,
+      audioFiles: audioFiles.map(f => ({ name: f.name, size: f.size, type: f.type }))
+    });
+    
     const uploadFiles: UploadedFile[] = audioFiles.map(file => ({
       file,
       status: 'pending',
       progress: 0
     }));
+    
+    console.log('✅ Files added to state');
     setFiles(prev => [...prev, ...uploadFiles]);
   };
 
@@ -54,40 +106,70 @@ export default function UploadPage() {
     }
   };
 
-  if (status === 'loading') {
-    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
-  }
-
-  if (!session) {
-    router.push('/signin');
-    return null;
-  }
-
   const uploadFile = async (fileIndex: number) => {
+    console.log('🚀 Starting upload for fileIndex:', fileIndex);
     const fileToUpload = files[fileIndex];
-    if (!fileToUpload) return;
+    if (!fileToUpload) {
+      console.error('❌ No file found at index:', fileIndex);
+      return;
+    }
+
+    console.log('📁 File to upload:', {
+      name: fileToUpload.file.name,
+      size: fileToUpload.file.size,
+      type: fileToUpload.file.type,
+      lastModified: fileToUpload.file.lastModified,
+      constructor: fileToUpload.file.constructor.name
+    });
 
     setFiles(prev => prev.map((f, i) => 
       i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
     ));
 
+    // Simulate upload progress
+    const progressInterval = setInterval(() => {
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex && f.status === 'uploading' 
+          ? { ...f, progress: Math.min(f.progress + 10, 90) } 
+          : f
+      ));
+    }, 200);
+
     try {
+      console.log('📦 Creating FormData...');
       const formData = new FormData();
       formData.append('audio', fileToUpload.file);
+      
+      console.log('📦 FormData created:', {
+        hasAudio: formData.has('audio'),
+        audioValue: formData.get('audio'),
+        audioFile: formData.get('audio') instanceof File,
+        audioFileSize: (formData.get('audio') as File)?.size
+      });
 
+      console.log('🌐 Sending fetch request...');
       const response = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('📤 Response received:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
+
       const result = await response.json();
+      console.log('📄 Response data:', result);
+
+      clearInterval(progressInterval);
 
       if (response.ok) {
         setFiles(prev => prev.map((f, i) => 
           i === fileIndex ? { 
             ...f, 
             status: 'processing', 
-            progress: 100,
+            progress: 70, // Upload complete, now processing
             id: result.fileId 
           } : f
         ));
@@ -95,6 +177,7 @@ export default function UploadPage() {
         throw new Error(result.error || 'Upload failed');
       }
     } catch (error) {
+      clearInterval(progressInterval);
       setFiles(prev => prev.map((f, i) => 
         i === fileIndex ? { 
           ...f, 
@@ -130,25 +213,46 @@ export default function UploadPage() {
     }
   };
 
-  const getStatusText = (status: UploadedFile['status']) => {
+  const getStatusText = (status: UploadedFile['status'], progress: number) => {
     switch (status) {
       case 'pending': return 'Ready to upload';
       case 'uploading': return 'Uploading...';
-      case 'processing': return 'Processing with ElevenLabs...';
-      case 'completed': return 'Completed';
-      case 'failed': return 'Failed';
+      case 'processing': return 'Processing with ElevenLabs Scribe...';
+      case 'completed': return 'Transcription completed ✅';
+      case 'failed': return 'Failed ❌';
       default: return 'Unknown';
     }
   };
 
+  const getProgressColor = (status: UploadedFile['status']) => {
+    switch (status) {
+      case 'uploading': return 'bg-blue-600';
+      case 'processing': return 'bg-yellow-500';
+      case 'completed': return 'bg-green-600';
+      case 'failed': return 'bg-red-600';
+      default: return 'bg-gray-400';
+    }
+  };
+
+  if (status === 'loading') {
+    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
+  }
+
+  if (!session) {
+    router.push('/signin');
+    return null;
+  }
+
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-2">Upload Audio Files</h1>
-        <p className="text-gray-600">
-          Upload your audio files to transcribe them using ElevenLabs Speech-to-Text
-        </p>
-      </div>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Header title="Upload Audio Files" showBackButton={true} />
+      
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="mb-8">
+          <p className="text-gray-600 dark:text-gray-300">
+            Upload your audio files to transcribe them using ElevenLabs Scribe
+          </p>
+        </div>
 
       {/* Upload Area */}
       <div
@@ -201,47 +305,94 @@ export default function UploadPage() {
 
           <div className="space-y-3">
             {files.map((file, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between p-4 border rounded-lg"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{file.file.name}</div>
-                  <div className="text-sm text-gray-500">
-                    {(file.file.size / 1024 / 1024).toFixed(2)} MB
-                  </div>
-                  <div className={`text-sm ${getStatusColor(file.status)}`}>
-                    {getStatusText(file.status)}
-                    {file.error && ` - ${file.error}`}
-                  </div>
-                </div>
-
-                <div className="flex items-center space-x-2">
-                  {file.status === 'pending' && (
-                    <button
-                      onClick={() => uploadFile(index)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
-                    >
-                      Upload
-                    </button>
-                  )}
-                  
-                  {(file.status === 'uploading' || file.status === 'processing') && (
-                    <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all"
-                        style={{ width: `${file.progress}%` }}
-                      />
+              <div key={index} className="border rounded-lg">
+                <div className="flex items-center justify-between p-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{file.file.name}</div>
+                    <div className="text-sm text-gray-500">
+                      {(file.file.size / 1024 / 1024).toFixed(2)} MB
                     </div>
-                  )}
+                    <div className={`text-sm font-medium ${getStatusColor(file.status)}`}>
+                      {getStatusText(file.status, file.progress)}
+                      {file.error && ` - ${file.error}`}
+                    </div>
+                    {file.status === 'processing' && (
+                      <div className="text-xs text-gray-400 mt-1">
+                        This may take 1-2 minutes depending on file length
+                      </div>
+                    )}
+                  </div>
 
-                  <button
-                    onClick={() => removeFile(index)}
-                    className="text-red-500 hover:text-red-700 p-1"
-                  >
-                    ✕
-                  </button>
+                  <div className="flex items-center space-x-2">
+                    {file.status === 'pending' && (
+                      <button
+                        onClick={() => uploadFile(index)}
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm transition-colors"
+                      >
+                        Upload
+                      </button>
+                    )}
+                    
+                    {(file.status === 'uploading' || file.status === 'processing') && (
+                      <div className="w-32">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>{file.status === 'uploading' ? 'Uploading' : 'Processing'}</span>
+                          <span>{file.progress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(file.status)}`}
+                            style={{ width: `${file.progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {file.status === 'completed' && (
+                      <div className="flex items-center space-x-2">
+                        <div className="text-green-600 font-medium text-sm">✅ Complete</div>
+                        <button
+                          onClick={() => router.push('/files')}
+                          className="text-blue-600 hover:text-blue-800 text-sm underline"
+                        >
+                          View Result
+                        </button>
+                      </div>
+                    )}
+
+                    {file.status === 'failed' && (
+                      <div className="text-red-600 font-medium text-sm">❌ Failed</div>
+                    )}
+
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="text-red-500 hover:text-red-700 p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
                 </div>
+                
+                {/* Transcription Preview for Completed Files */}
+                {file.status === 'completed' && file.transcription && (
+                  <div className="mx-4 mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <h4 className="text-sm font-medium text-green-800 mb-2">Transcription Preview:</h4>
+                    <p className="text-sm text-green-700 leading-relaxed">
+                      {file.transcription.length > 200 
+                        ? file.transcription.substring(0, 200) + '...' 
+                        : file.transcription
+                      }
+                    </p>
+                    {file.transcription.length > 200 && (
+                      <button
+                        onClick={() => router.push('/files')}
+                        className="text-green-600 hover:text-green-800 text-sm underline mt-2 block"
+                      >
+                        View Full Transcription
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -249,19 +400,14 @@ export default function UploadPage() {
       )}
 
       {/* Navigation */}
-      <div className="mt-8 flex justify-center space-x-4">
-        <button
-          onClick={() => router.push('/')}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
-        >
-          ← Dashboard
-        </button>
+      <div className="mt-8 flex justify-center">
         <button
           onClick={() => router.push('/files')}
           className="bg-gray-500 hover:bg-gray-600 text-white px-6 py-2 rounded-lg transition-colors"
         >
           View My Files
         </button>
+      </div>
       </div>
     </div>
   );
