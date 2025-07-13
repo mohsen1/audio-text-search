@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '../auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
-import fs from 'fs/promises';
-import path from 'path';
 
 export const runtime = 'nodejs';
 
@@ -32,38 +30,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No audio file provided' }, { status: 400 });
     }
 
-    // Read file into buffer
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    if (buffer.length === 0) {
+    if (file.size === 0) {
       return NextResponse.json({ error: 'Cannot process an empty file' }, { status: 400 });
     }
-
-    // Save file to disk
-    const timestamp = Date.now();
-    const fileName = `${timestamp}-${file.name.replace(/[^a-zA-Z0-9.\-_]/g, '')}`;
-    const uploadsDir = path.join(process.cwd(), 'uploads');
-    const filePath = path.join(uploadsDir, fileName);
-
-    await fs.mkdir(uploadsDir, { recursive: true });
-    await fs.writeFile(filePath, buffer);
 
     // Create database record
     const dbRecord = await prisma.audioFile.create({
       data: {
-        fileName: fileName,
+        fileName: file.name,
         originalName: file.name,
-        filePath: filePath,
-        fileSize: buffer.length,
+        fileSize: file.size,
         mimeType: file.type,
         status: 'processing',
         userId: session.user.id,
       },
     });
 
-    // Process with ElevenLabs
-    processAudioFile(dbRecord.id, buffer, file.name, file.type, user.elevenlabsApiKey)
+    // Process with ElevenLabs directly from the file stream
+    processAudioFile(dbRecord.id, file, user.elevenlabsApiKey)
       .catch(error => {
         console.error(`Background processing failed for fileId ${dbRecord.id}:`, error);
         prisma.audioFile.update({
@@ -84,14 +68,13 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFileName: string, mimeType: string, apiKey: string) {
-  console.log(`🎵 Processing ${originalFileName} (${audioBuffer.length} bytes) with ElevenLabs...`);
+async function processAudioFile(fileId: string, file: File, apiKey: string) {
+  console.log(`🎵 Processing ${file.name} (${file.size} bytes) with ElevenLabs...`);
 
   try {
-    const blob = new Blob([audioBuffer], { type: mimeType });
     const formData = new FormData();
     formData.append('model_id', 'scribe_v1');
-    formData.append('file', blob, originalFileName);
+    formData.append('file', file);
     formData.append('timestamps_granularity', 'word');
     formData.append('output_format', 'verbose_json');
 
@@ -148,10 +131,10 @@ async function processAudioFile(fileId: string, audioBuffer: Buffer, originalFil
       }
     });
     
-    console.log(`✅ Successfully transcribed ${originalFileName} (${plainText?.length} chars, ${words.length} words with timestamps)`);
+    console.log(`✅ Successfully transcribed ${file.name} (${plainText?.length} chars, ${words.length} words with timestamps)`);
 
   } catch (error) {
-    console.error(`❌ Failed to process ${originalFileName}:`, error.message);
+    console.error(`❌ Failed to process ${file.name}:`, error.message);
     
     await prisma.audioFile.update({
       where: { id: fileId },
