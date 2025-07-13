@@ -24,11 +24,12 @@ echo "✅ DATABASE_URL is set"
 echo "📦 Generating Prisma client..."
 npx prisma generate
 
-# Create and apply the initial migration
-echo "🗄️  Creating initial migration..."
-npx prisma migrate dev --name init
+# Create tables using db push (safe for existing databases)
+echo "🗄️  Creating audio-search tables..."
+npx prisma db push
 
 echo "✅ Development database setup complete!"
+echo "ℹ️  Tables are prefixed with 'audio_search_' to avoid conflicts"
 echo ""
 echo "You can now run:"
 echo "  pnpm dev          # Start development server"

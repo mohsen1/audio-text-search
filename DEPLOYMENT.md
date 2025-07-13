@@ -4,7 +4,7 @@
 
 ⚠️ **This project was recently switched from SQLite to PostgreSQL**
 
-The migration history has been reset to accommodate the database provider change. The old SQLite migrations have been removed, and a new PostgreSQL migration will be created on first deployment.
+**Safe for existing databases**: All tables are prefixed with `audio_search_` to avoid conflicts with existing data in your Neon database. The deployment uses `prisma db push` which safely creates only the needed tables without affecting existing data.
 
 ## Prerequisites
 
@@ -30,7 +30,9 @@ Set these in your Vercel project settings:
 2. **Vercel will automatically**:
    - Install dependencies (`pnpm install`)
    - Generate Prisma client (`prisma generate`)
-   - Run database migrations (`prisma migrate deploy`)
+   - Create audio-search tables (`./scripts/deploy-db.sh`)
+     - Uses `prisma db push` to safely create prefixed tables
+     - Won't affect any existing data in your database
    - Build the Next.js app (`next build`)
    - Deploy to production
 
@@ -51,12 +53,21 @@ Set these in your Vercel project settings:
    - Ensure Neon database is accessible
 
 2. **Prisma client errors**
-   - Check that migrations ran successfully
+   - Check that tables were created successfully
    - Verify Prisma client generation in build logs
 
 3. **Authentication issues**
    - Verify `NEXTAUTH_SECRET` is set
    - Check `NEXTAUTH_URL` matches your domain
+
+4. **Table creation issues**
+   - The app creates tables with `audio_search_` prefix
+   - Existing data in your database will not be affected
+   - Check build logs for any permission issues
+
+5. **Build failures**
+   - Check Vercel build logs for specific error messages
+   - Ensure all environment variables are set correctly
 
 ### Build Logs
 

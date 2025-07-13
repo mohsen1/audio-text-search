@@ -14,7 +14,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// NextAuth models
+// NextAuth models with audio_search prefix
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -34,6 +34,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("audio_search_accounts")
 }
 
 model Session {
@@ -43,6 +44,8 @@ model Session {
   expires      DateTime
 
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("audio_search_sessions")
 }
 
 model User {
@@ -57,6 +60,8 @@ model User {
   accounts      Account[]
   sessions      Session[]
   audioFiles    AudioFile[]
+  
+  @@map("audio_search_users")
 }
 
 model AudioFile {
@@ -74,6 +79,8 @@ model AudioFile {
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   words         TranscriptWord[]
+  
+  @@map("audio_search_audio_files")
 }
 
 model TranscriptWord {
@@ -88,6 +95,7 @@ model TranscriptWord {
   
   @@index([audioFileId, wordIndex])
   @@index([audioFileId, word])
+  @@map("audio_search_transcript_words")
 }
 
 model VerificationToken {
@@ -96,4 +104,5 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@map("audio_search_verification_tokens")
 }
