@@ -56,7 +56,27 @@ export default function UploadPage() {
     return () => clearInterval(pollInterval);
   }, [files]);
 
-  const addFiles = (newFiles: File[]) => {
+  // Function to get audio duration from file
+  const getAudioDuration = (file: File): Promise<number> => {
+    return new Promise((resolve, reject) => {
+      const audio = new Audio();
+      const url = URL.createObjectURL(file);
+      
+      audio.addEventListener('loadedmetadata', () => {
+        URL.revokeObjectURL(url);
+        resolve(audio.duration);
+      });
+      
+      audio.addEventListener('error', () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not load audio metadata'));
+      });
+      
+      audio.src = url;
+    });
+  };
+
+  const addFiles = async (newFiles: File[]) => {
     console.log('📂 Adding files:', {
       totalFiles: newFiles.length,
       fileDetails: newFiles.map(f => ({
@@ -73,22 +93,39 @@ export default function UploadPage() {
       audioFiles: audioFiles.map(f => ({ name: f.name, size: f.size, type: f.type }))
     });
     
-    // Estimate transcription duration based on file size
-    // Rough estimation: 1MB ≈ 10-15 seconds of audio ≈ 10-15 seconds transcription time
-    const estimateTranscriptionTime = (fileSize: number) => {
-      const sizeMB = fileSize / (1024 * 1024);
-      if (sizeMB < 1) return 15000; // 15 seconds for small files
-      if (sizeMB < 5) return sizeMB * 12000; // ~12 seconds per MB
-      if (sizeMB < 20) return sizeMB * 15000; // ~15 seconds per MB
-      return sizeMB * 18000; // ~18 seconds per MB for larger files
-    };
+    // Get audio duration for each file and calculate transcription time
+    const uploadFiles: UploadedFile[] = [];
     
-    const uploadFiles: UploadedFile[] = audioFiles.map(file => ({
-      file,
-      status: 'pending',
-      progress: 0,
-      estimatedDurationMs: estimateTranscriptionTime(file.size)
-    }));
+    for (const file of audioFiles) {
+      try {
+        console.log(`🔍 Getting duration for ${file.name}...`);
+        const audioDuration = await getAudioDuration(file);
+        // ElevenLabs Scribe is very fast: 50-70x real-time, let's use 60x
+        const transcriptionTimeMs = (audioDuration / 60) * 1000;
+        
+        console.log(`⏱️ Audio duration: ${audioDuration}s, estimated transcription: ${transcriptionTimeMs}ms`);
+        
+        uploadFiles.push({
+          file,
+          status: 'pending',
+          progress: 0,
+          estimatedDurationMs: Math.max(transcriptionTimeMs, 2000) // Minimum 2 seconds
+        });
+      } catch  {
+
+        console.warn(`⚠️ Could not get duration for ${file.name}, using fallback estimation`);
+        // Fallback to file size estimation if duration detection fails
+        const sizeMB = file.size / (1024 * 1024);
+        const fallbackTime = Math.max(sizeMB * 1000, 5000); // ~1 second per MB, minimum 5 seconds
+        
+        uploadFiles.push({
+          file,
+          status: 'pending',
+          progress: 0,
+          estimatedDurationMs: fallbackTime
+        });
+      }
+    }
     
     console.log('✅ Files added to state');
     setFiles(prev => [...prev, ...uploadFiles]);
@@ -104,19 +141,19 @@ export default function UploadPage() {
     }
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
 
     const droppedFiles = Array.from(e.dataTransfer.files);
-    addFiles(droppedFiles);
+    await addFiles(droppedFiles);
   }, []);
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const selectedFiles = Array.from(e.target.files);
-      addFiles(selectedFiles);
+      await addFiles(selectedFiles);
     }
   };
 
@@ -128,26 +165,33 @@ export default function UploadPage() {
       return;
     }
 
-    const startTime = Date.now();
-    const estimatedDuration = fileToUpload.estimatedDurationMs || 30000; // Default 30 seconds
+    const estimatedDuration = fileToUpload.estimatedDurationMs || 5000; // Default 5 seconds
 
     setFiles(prev => prev.map((f, i) => 
-      i === fileIndex ? { ...f, status: 'uploading', progress: 0, startTime } : f
+      i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
     ));
 
-    // Realistic progress updates based on estimated time
-    const progressInterval = setInterval(() => {
-      setFiles(prev => prev.map((f, i) => {
-        if (i === fileIndex && f.status === 'uploading' && f.startTime) {
-          const elapsed = Date.now() - f.startTime;
-          const expectedProgress = Math.min((elapsed / estimatedDuration) * 85, 85); // Cap at 85% until completion
-          return { ...f, progress: Math.round(expectedProgress) };
-        }
-        return f;
-      }));
-    }, 500); // Update every 500ms for smoother progress
-
     try {
+      // Step 1: Initial setup
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 5 } : f
+      ));
+
+      const transcriptionStartTime = Date.now();
+      
+      // Start realistic progress updates based on estimated time
+      const progressInterval = setInterval(() => {
+        setFiles(prev => prev.map((f, i) => {
+          if (i === fileIndex && f.status === 'uploading') {
+            const elapsed = Date.now() - transcriptionStartTime;
+            const transcriptionProgress = Math.min((elapsed / estimatedDuration) * 80, 80);
+            const totalProgress = 10 + transcriptionProgress;
+            return { ...f, progress: Math.round(Math.min(totalProgress, 85)) };
+          }
+          return f;
+        }));
+      }, 500); // Update every 500ms for smoother progress
+
       const formData = new FormData();
       formData.append('audio', fileToUpload.file);
 
@@ -172,7 +216,6 @@ export default function UploadPage() {
         throw new Error(result.error || 'Server-side upload failed');
       }
     } catch (error) {
-      clearInterval(progressInterval);
       setFiles(prev => prev.map((f, i) => 
         i === fileIndex ? { 
           ...f, 
@@ -196,31 +239,21 @@ export default function UploadPage() {
       size: fileToUpload.file.size,
       type: fileToUpload.file.type,
       lastModified: fileToUpload.file.lastModified,
-      constructor: fileToUpload.file.constructor.name
+      estimatedDurationMs: fileToUpload.estimatedDurationMs
     });
 
-    const startTime = Date.now();
-    const estimatedDuration = fileToUpload.estimatedDurationMs || 30000; // Default 30 seconds
+    const estimatedDuration = fileToUpload.estimatedDurationMs || 5000; // Default 5 seconds
 
     setFiles(prev => prev.map((f, i) => 
-      i === fileIndex ? { ...f, status: 'uploading', progress: 0, startTime } : f
+      i === fileIndex ? { ...f, status: 'uploading', progress: 0 } : f
     ));
 
-    // Realistic progress updates based on estimated transcription time
-    const progressInterval = setInterval(() => {
-      setFiles(prev => prev.map((f, i) => {
-        if (i === fileIndex && f.status === 'uploading' && f.startTime) {
-          const elapsed = Date.now() - f.startTime;
-          const expectedProgress = Math.min((elapsed / estimatedDuration) * 85, 85); // Cap at 85% until completion
-          return { ...f, progress: Math.round(expectedProgress) };
-        }
-        return f;
-      }));
-    }, 500); // Update every 500ms for smoother progress
-
     try {
-      // Step 1: Get ElevenLabs API key
+      // Step 1: Get ElevenLabs API key (quick step)
       console.log('🔑 Fetching ElevenLabs API key...');
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 5 } : f
+      ));
 
       const apiKeyResponse = await fetch('/api/user/elevenlabs-key?forUpload=true');
       if (!apiKeyResponse.ok) {
@@ -232,8 +265,26 @@ export default function UploadPage() {
         throw new Error('ElevenLabs API key not configured. Please add your API key in settings.');
       }
 
-      // Step 2: Send file directly to ElevenLabs
+      // Step 2: Send file directly to ElevenLabs with real-time progress tracking
       console.log('🎵 Sending file to ElevenLabs for transcription...');
+      const transcriptionStartTime = Date.now();
+      
+      setFiles(prev => prev.map((f, i) => 
+        i === fileIndex ? { ...f, progress: 10, startTime: transcriptionStartTime } : f
+      ));
+
+      // Start progress tracking for the transcription phase
+      const progressInterval = setInterval(() => {
+        setFiles(prev => prev.map((f, i) => {
+          if (i === fileIndex && f.status === 'uploading' && f.startTime) {
+            const elapsed = Date.now() - f.startTime;
+            const transcriptionProgress = Math.min((elapsed / estimatedDuration) * 80, 80); // 80% of total progress
+            const totalProgress = 10 + transcriptionProgress; // Start from 10% (after API key)
+            return { ...f, progress: Math.round(Math.min(totalProgress, 90)) }; // Cap at 90%
+          }
+          return f;
+        }));
+      }, 500); // Update every 500ms
 
       const formData = new FormData();
       formData.append('model_id', 'scribe_v1');
@@ -298,7 +349,6 @@ export default function UploadPage() {
       ));
 
     } catch (error) {
-      clearInterval(progressInterval);
       console.error('❌ Transcription failed:', error);
       setFiles(prev => prev.map((f, i) => 
         i === fileIndex ? { 
@@ -577,8 +627,14 @@ export default function UploadPage() {
                             {(() => {
                               const elapsed = Date.now() - file.startTime;
                               const remaining = Math.max(0, file.estimatedDurationMs - elapsed);
-                              return remaining > 1000 ? ` (${Math.round(remaining / 1000)}s remaining)` : '';
+                              return remaining > 1000 ? ` (${Math.round(remaining / 1000)}s remaining)` : ' (almost done)';
                             })()}
+                          </div>
+                        )}
+                        {file.status === 'uploading' && file.estimatedDurationMs && !file.startTime && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1">
+                            <div className="w-1 h-1 bg-blue-500 rounded-full animate-pulse"></div>
+                            Estimated time: {Math.round(file.estimatedDurationMs / 1000)} seconds
                           </div>
                         )}
                       </div>
