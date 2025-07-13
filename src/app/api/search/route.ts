@@ -3,17 +3,22 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 
+interface SearchMatch {
+  text: string;
+  startTime: number;
+  endTime: number;
+  contextBefore: string;
+  contextAfter: string;
+  score: number; // Relevance score
+  matchType: 'exact' | 'partial' | 'fuzzy' | 'filename';
+}
+
 interface SearchResult {
   fileId: string;
   fileName: string;
   originalName: string;
-  matches: Array<{
-    text: string;
-    startTime: number;
-    endTime: number;
-    contextBefore: string;
-    contextAfter: string;
-  }>;
+  matches: SearchMatch[];
+  relevanceScore: number; // Overall file relevance
 }
 
 
@@ -36,15 +41,42 @@ export async function GET(request: NextRequest) {
 
     const offset = (page - 1) * limit;
 
-    // Search for words in the database using word-level timestamps with word boundaries
-    console.log(`🔍 Searching for word matches with query: "${query}"`);
+    console.log(`🔍 Enhanced search for query: "${query}"`);
     
-    // Create word boundary patterns for SQLite - get all words that might match
     const queryWords = query.toLowerCase().trim().split(/\s+/);
     console.log(`📝 Query split into words:`, queryWords);
     
-    // Get all potential word matches (we'll filter for word boundaries in memory)
-    const allWordMatches = await prisma.transcriptWord.findMany({
+    // Get exact word matches
+    const exactWordMatches = await prisma.transcriptWord.findMany({
+      where: {
+        audioFile: {
+          userId: session.user.id,
+          status: 'completed'
+        },
+        word: {
+          in: queryWords
+        }
+      },
+      include: {
+        audioFile: {
+          select: {
+            id: true,
+            fileName: true,
+            originalName: true,
+            transcription: true,
+            uploadedAt: true,
+            fileSize: true
+          }
+        }
+      },
+      orderBy: [
+        { audioFile: { uploadedAt: 'desc' } },
+        { wordIndex: 'asc' }
+      ]
+    });
+
+    // Get partial word matches for fuzzy search
+    const partialWordMatches = await prisma.transcriptWord.findMany({
       where: {
         audioFile: {
           userId: session.user.id,
@@ -74,25 +106,17 @@ export async function GET(request: NextRequest) {
       ]
     });
     
-    // Filter for word boundaries in memory
-    const wordMatches = allWordMatches.filter(match => {
-      const cleanWord = match.word.toLowerCase().replace(/[^\w]/g, '');
-      return queryWords.some(queryWord => {
-        const cleanQuery = queryWord.replace(/[^\w]/g, '');
-        return cleanWord === cleanQuery || match.word.toLowerCase() === queryWord.toLowerCase();
-      });
-    });
-    
-    console.log(`📊 Found ${wordMatches.length} word matches in database`);
+    console.log(`📊 Found ${exactWordMatches.length} exact matches, ${partialWordMatches.length} partial matches`);
 
-    // Also get files where the filename matches
+    // Get files where filename matches
     const filenameMatches = await prisma.audioFile.findMany({
       where: {
         userId: session.user.id,
         status: 'completed',
-        originalName: {
-          contains: query
-        }
+        OR: [
+          { originalName: { contains: query, mode: 'insensitive' } },
+          { fileName: { contains: query, mode: 'insensitive' } }
+        ]
       },
       select: {
         id: true,
@@ -104,77 +128,55 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Process word matches and group by file
     const fileResultsMap = new Map<string, SearchResult>();
     
-    // Process word-level matches with exact timestamps
-    console.log(`🔄 Processing ${wordMatches.length} individual word matches`);
+    // Process exact word matches (highest priority)
+    for (const wordMatch of exactWordMatches) {
+      await processWordMatch(wordMatch, fileResultsMap, query, 'exact', 1.0);
+    }
     
-    for (const wordMatch of wordMatches) {
-      const fileId = wordMatch.audioFile.id;
-      
-      console.log(`⏰ Processing word match: "${wordMatch.word}" at ${wordMatch.startTime}s-${wordMatch.endTime}s in file ${wordMatch.audioFile.originalName}`);
-      
-      if (!fileResultsMap.has(fileId)) {
-        fileResultsMap.set(fileId, {
-          fileId: fileId,
-          fileName: wordMatch.audioFile.fileName,
-          originalName: wordMatch.audioFile.originalName,
-          matches: []
-        });
+    // Process partial word matches (lower priority)
+    for (const wordMatch of partialWordMatches) {
+      if (!exactWordMatches.find(exact => exact.id === wordMatch.id)) {
+        const similarity = calculateSimilarity(wordMatch.word.toLowerCase(), query.toLowerCase());
+        await processWordMatch(wordMatch, fileResultsMap, query, 'partial', similarity);
       }
-      
-      const fileResult = fileResultsMap.get(fileId)!;
-      
-      // Get context words around the match
-      const contextWords = await getContextWords(fileId, wordMatch.wordIndex, 5);
-      
-      const match = {
-        text: wordMatch.word,
-        startTime: wordMatch.startTime,
-        endTime: wordMatch.endTime,
-        contextBefore: contextWords.before.map(w => w.word).join(' '),
-        contextAfter: contextWords.after.map(w => w.word).join(' ')
-      };
-      
-      fileResult.matches.push(match);
-      console.log(`✅ Added match: "${match.text}" at ${match.startTime}s-${match.endTime}s`);
     }
     
-    // Log results per file
-    for (const [fileId, result] of fileResultsMap.entries()) {
-      console.log(`📁 File "${result.originalName}" has ${result.matches.length} matches`);
-    }
-    
-    // Process filename matches (add files that match by name but may not have word matches)
+    // Process filename matches
     for (const filenameMatch of filenameMatches) {
       if (!fileResultsMap.has(filenameMatch.id)) {
+        const similarity = Math.max(
+          calculateSimilarity(filenameMatch.originalName.toLowerCase(), query.toLowerCase()),
+          calculateSimilarity(filenameMatch.fileName.toLowerCase(), query.toLowerCase())
+        );
+        
         fileResultsMap.set(filenameMatch.id, {
           fileId: filenameMatch.id,
           fileName: filenameMatch.fileName,
           originalName: filenameMatch.originalName,
           matches: [{
-            text: query + ' (in filename)',
+            text: `"${query}" found in filename`,
             startTime: 0,
             endTime: 0,
             contextBefore: '',
-            contextAfter: ''
-          }]
+            contextAfter: filenameMatch.originalName,
+            score: similarity,
+            matchType: 'filename'
+          }],
+          relevanceScore: similarity * 0.7 // Filename matches get lower priority than content
         });
       }
     }
     
-    // Fallback: Search in transcript text for files without word-level data
-    console.log(`🔄 Searching for fallback matches in transcript text`);
-    const filesWithoutWords = await prisma.audioFile.findMany({
+    // Fallback: Search in transcript text for comprehensive coverage
+    const transcriptMatches = await prisma.audioFile.findMany({
       where: {
         userId: session.user.id,
         status: 'completed',
         transcription: {
-          contains: query
-        },
-        words: {
-          none: {} // Files that have no word records
+          contains: query,
+          mode: 'insensitive'
         }
       },
       select: {
@@ -187,40 +189,117 @@ export async function GET(request: NextRequest) {
       }
     });
     
-    console.log(`📋 Found ${filesWithoutWords.length} files without word data that match in transcript`);
-    
-    // Add fallback matches for files without word-level data
-    for (const file of filesWithoutWords) {
+    // Add transcript-level matches for files not already processed
+    for (const file of transcriptMatches) {
       if (!fileResultsMap.has(file.id) && file.transcription) {
-        fileResultsMap.set(file.id, {
-          fileId: file.id,
-          fileName: file.fileName,
-          originalName: file.originalName,
-          matches: [{
-            text: query,
-            startTime: 0,
-            endTime: 0,
-            contextBefore: getContextFromText(file.transcription, query, 'before'),
-            contextAfter: getContextFromText(file.transcription, query, 'after')
-          }]
-        });
+        const occurrences = findAllOccurrences(file.transcription, query);
+        const matches = occurrences.map(occurrence => ({
+          text: occurrence.text,
+          startTime: 0,
+          endTime: 0,
+          contextBefore: occurrence.contextBefore,
+          contextAfter: occurrence.contextAfter,
+          score: occurrence.score,
+          matchType: 'fuzzy' as const
+        }));
+        
+        if (matches.length > 0) {
+          fileResultsMap.set(file.id, {
+            fileId: file.id,
+            fileName: file.fileName,
+            originalName: file.originalName,
+            matches: matches.slice(0, 5), // Limit to top 5 matches per file
+            relevanceScore: Math.max(...matches.map(m => m.score))
+          });
+        }
       }
     }
     
-    // Convert map to array and sort matches by time within each file
-    const results = Array.from(fileResultsMap.values()).map(result => ({
-      ...result,
-      matches: result.matches
-        .sort((a, b) => a.startTime - b.startTime) // Sort by start time
-        .slice(0, 10) // Limit to top 10 matches per file for performance
-    }));
+    // Handle phrase matching for multi-word queries
+    interface PhraseMatch {
+      text: string;
+      startTime: number;
+      endTime: number;
+      words: string[];
+      wordIndices: number[];
+      audioFile: {
+        id: string;
+        fileName: string;
+        originalName: string;
+      };
+    }
+    
+    const phraseMatches: PhraseMatch[] = [];
+    if (queryWords.length > 1) {
+      const phraseQuery = query.toLowerCase();
+      
+      // Search for phrase matches in transcript text
+      const phraseFiles = await prisma.audioFile.findMany({
+        where: {
+          userId: session.user.id,
+          status: 'completed',
+          transcription: {
+            contains: phraseQuery,
+            mode: 'insensitive'
+          }
+        },
+        select: {
+          id: true,
+          fileName: true,
+          originalName: true,
+          transcription: true,
+          uploadedAt: true,
+          fileSize: true
+        }
+      });
+      
+      // Get words for phrase matching
+      for (const file of phraseFiles) {
+        const fileWords = await prisma.transcriptWord.findMany({
+          where: { audioFileId: file.id },
+          orderBy: { wordIndex: 'asc' }
+        });
+        
+        if (fileWords.length > 0) {
+          const wordSequences = findPhraseInWords(fileWords, queryWords);
+          phraseMatches.push(...wordSequences.map(seq => ({
+            text: seq.text,
+            startTime: seq.startTime,
+            endTime: seq.endTime,
+            words: seq.words,
+            wordIndices: seq.wordIndices,
+            audioFile: {
+              id: file.id,
+              fileName: file.fileName,
+              originalName: file.originalName
+            }
+          })));
+        }
+      }
+    }
+    
+    // Process phrase matches with highest priority
+    for (const phraseMatch of phraseMatches) {
+      await processPhraseMatch(phraseMatch, fileResultsMap);
+    }
+    
+    // Convert to array and sort by relevance
+    const results = Array.from(fileResultsMap.values())
+      .map(result => ({
+        ...result,
+        matches: result.matches
+          .sort((a, b) => b.score - a.score || a.startTime - b.startTime)
+          .slice(0, 10) // Limit matches per file
+      }))
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
 
-    // Apply pagination to filtered results
     const total = results.length;
     const paginatedResults = results.slice(offset, offset + limit);
     
-    console.log(`📋 Final results: ${total} files with matches, returning ${paginatedResults.length} files`);
-    console.log(`🎯 Results summary:`, paginatedResults.map(r => `${r.originalName}: ${r.matches.length} matches`));
+    console.log(`📋 Enhanced search results: ${total} files found`);
+    paginatedResults.forEach(r => 
+      console.log(`📁 ${r.originalName}: ${r.matches.length} matches (score: ${r.relevanceScore.toFixed(2)})`)
+    );
 
     return NextResponse.json({
       results: paginatedResults,
@@ -234,9 +313,139 @@ export async function GET(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error in search:', error);
+    console.error('Error in enhanced search:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
+}
+
+async function processWordMatch(
+  wordMatch: {
+    id: string;
+    word: string;
+    startTime: number;
+    endTime: number;
+    wordIndex: number;
+    audioFile: {
+      id: string;
+      fileName: string;
+      originalName: string;
+    };
+  },
+  fileResultsMap: Map<string, SearchResult>,
+  query: string,
+  matchType: 'exact' | 'partial' | 'fuzzy',
+  score: number
+) {
+  const fileId = wordMatch.audioFile.id;
+  
+  if (!fileResultsMap.has(fileId)) {
+    fileResultsMap.set(fileId, {
+      fileId: fileId,
+      fileName: wordMatch.audioFile.fileName,
+      originalName: wordMatch.audioFile.originalName,
+      matches: [],
+      relevanceScore: 0
+    });
+  }
+  
+  const fileResult = fileResultsMap.get(fileId)!;
+  
+  // Get context words around the match
+  const contextWords = await getContextWords(fileId, wordMatch.wordIndex, 5);
+  
+  const match: SearchMatch = {
+    text: wordMatch.word,
+    startTime: wordMatch.startTime,
+    endTime: wordMatch.endTime,
+    contextBefore: contextWords.before.map(w => w.word).join(' '),
+    contextAfter: contextWords.after.map(w => w.word).join(' '),
+    score: score,
+    matchType: matchType
+  };
+  
+  fileResult.matches.push(match);
+  fileResult.relevanceScore = Math.max(fileResult.relevanceScore, score);
+}
+
+function calculateSimilarity(str1: string, str2: string): number {
+  // Simple similarity calculation based on substring matching and length
+  const longer = str1.length > str2.length ? str1 : str2;
+  const shorter = str1.length > str2.length ? str2 : str1;
+  
+  if (longer.length === 0) return 1.0;
+  
+  // Exact match
+  if (str1 === str2) return 1.0;
+  
+  // Check if shorter string is contained in longer
+  if (longer.includes(shorter)) {
+    return shorter.length / longer.length;
+  }
+  
+  // Calculate edit distance-based similarity
+  const editDistance = levenshteinDistance(str1, str2);
+  return (longer.length - editDistance) / longer.length;
+}
+
+function levenshteinDistance(str1: string, str2: string): number {
+  const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+  
+  for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+  for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+  
+  for (let j = 1; j <= str2.length; j++) {
+    for (let i = 1; i <= str1.length; i++) {
+      const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      matrix[j][i] = Math.min(
+        matrix[j][i - 1] + 1,     // deletion
+        matrix[j - 1][i] + 1,     // insertion
+        matrix[j - 1][i - 1] + indicator // substitution
+      );
+    }
+  }
+  
+  return matrix[str2.length][str1.length];
+}
+
+interface TextOccurrence {
+  text: string;
+  contextBefore: string;
+  contextAfter: string;
+  score: number;
+}
+
+function findAllOccurrences(text: string, query: string): TextOccurrence[] {
+  const occurrences: TextOccurrence[] = [];
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const contextLength = 100;
+  
+  let startIndex = 0;
+  while (true) {
+    const index = lowerText.indexOf(lowerQuery, startIndex);
+    if (index === -1) break;
+    
+    const beforeStart = Math.max(0, index - contextLength);
+    const afterEnd = Math.min(text.length, index + query.length + contextLength);
+    
+    const contextBefore = text.substring(beforeStart, index).trim();
+    const contextAfter = text.substring(index + query.length, afterEnd).trim();
+    const matchedText = text.substring(index, index + query.length);
+    
+    // Calculate score based on exact vs partial match
+    const score = matchedText.toLowerCase() === lowerQuery ? 1.0 : 0.8;
+    
+    occurrences.push({
+      text: matchedText,
+      contextBefore,
+      contextAfter,
+      score
+    });
+    
+    startIndex = index + 1;
+  }
+  
+  return occurrences;
 }
 
 async function getContextWords(audioFileId: string, wordIndex: number, contextSize: number = 5) {
@@ -267,15 +476,99 @@ async function getContextWords(audioFileId: string, wordIndex: number, contextSi
   return { before, after };
 }
 
-function getContextFromText(text: string, query: string, direction: 'before' | 'after'): string {
-  const index = text.toLowerCase().indexOf(query.toLowerCase());
-  if (index === -1) return '';
+// Find sequences of words that match the query phrase
+interface WordData {
+  id: string;
+  word: string;
+  startTime: number;
+  endTime: number;
+  wordIndex: number;
+}
 
-  if (direction === 'before') {
-    const start = Math.max(0, index - 100);
-    return text.substring(start, index).trim();
-  } else {
-    const end = Math.min(text.length, index + query.length + 100);
-    return text.substring(index + query.length, end).trim();
+interface PhraseSequence {
+  text: string;
+  startTime: number;
+  endTime: number;
+  words: string[];
+  wordIndices: number[];
+}
+
+function findPhraseInWords(words: WordData[], queryWords: string[]): PhraseSequence[] {
+  const sequences: PhraseSequence[] = [];
+  
+  for (let i = 0; i <= words.length - queryWords.length; i++) {
+    let matches = true;
+    const sequenceWords = [];
+    const sequenceIndices = [];
+    
+    for (let j = 0; j < queryWords.length; j++) {
+      const word = words[i + j];
+      if (!word || word.word.toLowerCase().replace(/[^\w]/g, '') !== queryWords[j].toLowerCase().replace(/[^\w]/g, '')) {
+        matches = false;
+        break;
+      }
+      sequenceWords.push(word.word);
+      sequenceIndices.push(word.wordIndex);
+    }
+    
+    if (matches && sequenceWords.length > 0) {
+      const startWord = words[i];
+      const endWord = words[i + queryWords.length - 1];
+      
+      sequences.push({
+        text: sequenceWords.join(' '),
+        startTime: startWord.startTime,
+        endTime: endWord.endTime,
+        words: sequenceWords,
+        wordIndices: sequenceIndices
+      });
+    }
   }
+  
+  return sequences;
+}
+
+async function processPhraseMatch(
+  phraseMatch: {
+    text: string;
+    startTime: number;
+    endTime: number;
+    wordIndices: number[];
+    audioFile: {
+      id: string;
+      fileName: string;
+      originalName: string;
+    };
+  },
+  fileResultsMap: Map<string, SearchResult>
+) {
+  const fileId = phraseMatch.audioFile.id;
+  
+  if (!fileResultsMap.has(fileId)) {
+    fileResultsMap.set(fileId, {
+      fileId: fileId,
+      fileName: phraseMatch.audioFile.fileName,
+      originalName: phraseMatch.audioFile.originalName,
+      matches: [],
+      relevanceScore: 0
+    });
+  }
+  
+  const fileResult = fileResultsMap.get(fileId)!;
+  
+  // Get context words around the phrase match
+  const contextWords = await getContextWords(fileId, phraseMatch.wordIndices[0], 5);
+  
+  const match: SearchMatch = {
+    text: phraseMatch.text,
+    startTime: phraseMatch.startTime,
+    endTime: phraseMatch.endTime,
+    contextBefore: contextWords.before.map(w => w.word).join(' '),
+    contextAfter: contextWords.after.map(w => w.word).join(' '),
+    score: 1.0, // Phrase matches get highest score
+    matchType: 'exact'
+  };
+  
+  fileResult.matches.push(match);
+  fileResult.relevanceScore = Math.max(fileResult.relevanceScore, 1.0);
 }
