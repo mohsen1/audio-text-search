@@ -157,50 +157,60 @@ async function processAudioFile(fileId: string, file: File, apiKey: string) {
 }
 
 interface ElevenLabsWord {
-  word: string;
+  text?: string;  // New format
+  word?: string;  // Old format  
   start: number;
   end: number;
 }
 
-function extractWordsFromElevenLabsResponse(transcriptionResult: any): ElevenLabsWord[] {
+interface TranscriptionResponse {
+  words?: ElevenLabsWord[];
+  segments?: Array<{ words?: ElevenLabsWord[] }>;
+  text?: string;
+  [key: string]: unknown;
+}
+
+function extractWordsFromElevenLabsResponse(transcriptionResult: unknown): Array<{word: string, start: number, end: number}> {
   try {
-    console.log(`🧪 ElevenLabs response structure:`, JSON.stringify(transcriptionResult, null, 2));
+    const result = transcriptionResult as TranscriptionResponse;
+    
+    console.log(`🧪 ElevenLabs response structure:`, {
+      hasWords: !!result?.words,
+      wordsLength: result?.words?.length,
+      sampleKeys: Object.keys(result || {}).slice(0, 5)
+    });
     
     // Handle different ElevenLabs response formats
     let words: ElevenLabsWord[] = [];
     
-    if (transcriptionResult.words && Array.isArray(transcriptionResult.words)) {
-      console.log(`📍 Found words array with ${transcriptionResult.words.length} words`);
-      // Direct words array
-      words = transcriptionResult.words;
-    } else if (transcriptionResult.segments && Array.isArray(transcriptionResult.segments)) {
-      console.log(`📍 Found segments array with ${transcriptionResult.segments.length} segments`);
-      // Segments containing words
-      words = transcriptionResult.segments.flatMap((segment: any) => 
+    if (result.words && Array.isArray(result.words)) {
+      console.log(`📍 Found words array with ${result.words.length} words`);
+      words = result.words;
+    } else if (result.segments && Array.isArray(result.segments)) {
+      console.log(`📍 Found segments array with ${result.segments.length} segments`);
+      words = result.segments.flatMap((segment) => 
         segment.words || []
       );
-    } else if (Array.isArray(transcriptionResult)) {
-      console.log(`📍 Response is directly an array with ${transcriptionResult.length} items`);
-      // Array of words directly
-      words = transcriptionResult;
-    } else if (transcriptionResult.text && typeof transcriptionResult.text === 'string') {
+    } else if (Array.isArray(result)) {
+      console.log(`📍 Response is directly an array with ${result.length} items`);
+      words = result as ElevenLabsWord[];
+    } else if (result.text && typeof result.text === 'string') {
       console.log(`📍 Fallback: splitting text into words (no timestamps available)`);
-      // Fallback: split text into words without timestamps
-      const textWords = transcriptionResult.text.split(/\s+/);
-      words = textWords.map((word: string, index: number) => ({
-        word: word,
+      const textWords = result.text.split(/\s+/);
+      words = textWords.map((word: string) => ({
+        text: word,
         start: 0,
         end: 0
       }));
     } else {
-      console.log(`⚠️ Unknown ElevenLabs response format:`, Object.keys(transcriptionResult));
+      console.log(`⚠️ Unknown ElevenLabs response format:`, Object.keys(result || {}));
     }
     
-    // Filter and clean words
+    // Filter and clean words - handle both new format (text) and old format (word)
     return words
-      .filter(word => word && word.word && typeof word.word === 'string')
+      .filter(word => word && (word.text || word.word) && typeof (word.text || word.word) === 'string')
       .map(word => ({
-        word: word.word.trim(),
+        word: (word.text || word.word || '').trim(),
         start: typeof word.start === 'number' ? word.start : 0,
         end: typeof word.end === 'number' ? word.end : 0
       }))

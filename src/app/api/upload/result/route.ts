@@ -6,18 +6,20 @@ import { prisma } from '@/lib/prisma';
 export const runtime = 'nodejs';
 
 interface ElevenLabsWord {
-  chars: Array<{
-    char: string;
-    start_time: number;
-    end_time: number;
-  }>;
-  start_time: number;
-  end_time: number;
+  text: string;
+  start: number;
+  end: number;
+  type?: string;
+  speaker_id?: string | null;
+  logprob?: number;
+  characters?: unknown;
 }
 
 interface TranscriptionResult {
   text?: string;
   words?: ElevenLabsWord[];
+  language_code?: string;
+  language_probability?: number;
   [key: string]: unknown;
 }
 
@@ -27,23 +29,59 @@ function extractWordsFromElevenLabsResponse(transcriptionResult: TranscriptionRe
   end: number;
 }> {
   console.log('🔍 Extracting words from ElevenLabs response...');
+  console.log('📋 Transcription result structure:', {
+    hasWords: !!transcriptionResult?.words,
+    wordsType: typeof transcriptionResult?.words,
+    wordsIsArray: Array.isArray(transcriptionResult?.words),
+    wordsLength: transcriptionResult?.words?.length,
+    sampleKeys: Object.keys(transcriptionResult || {}).slice(0, 5)
+  });
   
-  if (!transcriptionResult.words || !Array.isArray(transcriptionResult.words)) {
+  if (!transcriptionResult || !transcriptionResult.words || !Array.isArray(transcriptionResult.words)) {
     console.warn('⚠️ No words array found in transcription result');
     return [];
   }
 
-  const words = transcriptionResult.words.map((wordObj: ElevenLabsWord) => {
-    const word = wordObj.chars.map(char => char.char).join('');
-    return {
-      word: word.trim(),
-      start: wordObj.start_time,
-      end: wordObj.end_time,
-    };
-  }).filter((w) => w.word.length > 0); // Filter out empty words
+  try {
+    const words = transcriptionResult.words
+      .map((wordObj: ElevenLabsWord, index: number) => {
+        try {
+          // Validate wordObj structure
+          if (!wordObj || typeof wordObj !== 'object') {
+            console.warn(`⚠️ Invalid word object at index ${index}:`, wordObj);
+            return null;
+          }
 
-  console.log(`📝 Extracted ${words.length} words from response`);
-  return words;
+          // Extract word text directly (new ElevenLabs format)
+          const word = typeof wordObj.text === 'string' ? wordObj.text.trim() : '';
+          
+          if (!word) {
+            console.warn(`⚠️ Empty word text at index ${index}:`, wordObj);
+            return null;
+          }
+
+          // Validate timestamps (new ElevenLabs format uses 'start' and 'end')
+          const startTime = typeof wordObj.start === 'number' ? wordObj.start : 0;
+          const endTime = typeof wordObj.end === 'number' ? wordObj.end : 0;
+
+          return {
+            word,
+            start: startTime,
+            end: endTime,
+          };
+        } catch (error) {
+          console.error(`❌ Error processing word at index ${index}:`, error);
+          return null;
+        }
+      })
+      .filter((w): w is NonNullable<typeof w> => w !== null && w.word.length > 0);
+
+    console.log(`📝 Extracted ${words.length} words from response`);
+    return words;
+  } catch (error) {
+    console.error('❌ Error in extractWordsFromElevenLabsResponse:', error);
+    return [];
+  }
 }
 
 export async function POST(request: NextRequest) {
