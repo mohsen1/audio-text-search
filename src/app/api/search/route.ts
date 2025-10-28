@@ -109,13 +109,14 @@ export async function GET(request: NextRequest) {
     console.log(`📊 Found ${exactWordMatches.length} exact matches, ${partialWordMatches.length} partial matches`);
 
     // Get files where filename matches
+    // Note: SQLite doesn't support mode: 'insensitive', using contains which is case-insensitive by default
     const filenameMatches = await prisma.audioFile.findMany({
       where: {
         userId: session.user.id,
         status: 'completed',
         OR: [
-          { originalName: { contains: query, mode: 'insensitive' } },
-          { fileName: { contains: query, mode: 'insensitive' } }
+          { originalName: { contains: query } },
+          { fileName: { contains: query } }
         ]
       },
       select: {
@@ -175,8 +176,7 @@ export async function GET(request: NextRequest) {
         userId: session.user.id,
         status: 'completed',
         transcription: {
-          contains: query,
-          mode: 'insensitive'
+          contains: query
         }
       },
       select: {
@@ -239,8 +239,7 @@ export async function GET(request: NextRequest) {
           userId: session.user.id,
           status: 'completed',
           transcription: {
-            contains: phraseQuery,
-            mode: 'insensitive'
+            contains: phraseQuery
           }
         },
         select: {

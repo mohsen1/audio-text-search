@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "browsermcp": {
-      "command": "pnpx",
-      "args": ["@browsermcp/mcp@latest"]
-    }
-  }
-}

@@ -1,0 +1,28 @@
+name = "audio-text-search"
+compatibility_date = "2025-01-27"
+pages_build_output_dir = ".vercel/output/static"
+
+# For Cloudflare Pages
+# Build command: pnpm run build
+# Build output directory: .vercel/output/static
+
+# Environment variables will be set in Cloudflare Dashboard
+# Required environment variables:
+# - NEXTAUTH_SECRET: Random secret for NextAuth
+# - NEXTAUTH_URL: Your Cloudflare Pages URL
+
+# Cloudflare D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "audio-text-search-db"
+database_id = "8c33afa3-30ae-4d0d-97b2-6d79395ced34"
+
+# Optional: Uncomment to use Cloudflare Hyperdrive for PostgreSQL connection pooling
+# [[hyperdrive]]
+# binding = "HYPERDRIVE"
+# id = "your-hyperdrive-id"
+
+# Optional: R2 bucket for file storage
+# [[r2_buckets]]
+# binding = "AUDIO_FILES"
+# bucket_name = "audio-text-search-files"
